@@ -1,10 +1,11 @@
-"""Build the black, isort and flake8 commands that apply the bundled style."""
+"""Build the black, isort, flake8 and mypy commands that apply the bundled style."""
 
 import contextlib
 import os
 import re
 import stat
 import sys
+from dataclasses import replace
 from fnmatch import fnmatchcase
 from importlib.resources import files
 from pathlib import Path
@@ -18,7 +19,7 @@ STYLE = files("max_lint") / "style"
 BUNDLED_EXCLUDE = (".git", ".venv")
 INIT_CODES = ("D104", "F401")
 FLAKE8_SEPARATORS = re.compile(r"[\s:,]")
-TOOL_ENVIRONMENT = {"DOCUTILSCONFIG": str(STYLE / "docutils.conf")}
+TOOL_ENVIRONMENT = {"DOCUTILSCONFIG": str(STYLE / "docutils.conf"), "PYTHONSAFEPATH": "1"}
 
 
 def _identity(path: str | Path) -> tuple[int, int]:
@@ -101,26 +102,30 @@ def per_file_ignores(config: Config, targets: list[str]) -> str:
 
 def lint_commands(config: Config, check: bool, scratch: Path) -> list[list[str]]:
     """
-    Return the black, isort and flake8 commands, in the order they run.
+    Return the black, isort, flake8 and mypy commands, in the order they run.
 
     :param config: project settings.
     :param check: run black and isort in their check modes, which write nothing.
     :param scratch: directory outside the project for the generated flake8 config; it must outlive the commands.
-    :return: one argument list per tool, each run with the current interpreter and without the working directory on ``sys.path``.
+    :return: one argument list per tool, each run with the current interpreter.
     """
     targets = python_files(config)
     ignores = scratch / "per-file-ignores.ini"
     ignores.write_text(per_file_ignores(config, targets), encoding="utf-8")
     formatters = str(STYLE / "formatters.toml")
     root = Path.cwd()
-    black = [sys.executable, "-P", "-m", "black", "--config", formatters]
+    black = [sys.executable, "-m", "black", "--config", formatters]
     black += [f"--target-version={version}" for version in config.black_target_versions]
-    isort = [sys.executable, "-P", "-m", "isort", "--settings-file", formatters, "--src", str(root / "src"), "--src", str(root)]
+    isort = [sys.executable, "-m", "isort", "--settings-file", formatters, "--src", str(root / "src"), "--src", str(root)]
 
     if check:
         black.append("--check")
         isort.append("--check-only")
 
-    flake8 = [sys.executable, "-P", "-m", "flake8", "--config", str(STYLE / "flake8.ini"), "--append-config", str(ignores)]
+    flake8 = [sys.executable, "-m", "flake8", "--config", str(STYLE / "flake8.ini"), "--append-config", str(ignores)]
 
-    return [[*command, "--", *targets] for command in (black, isort, flake8)]
+    commands = [[*command, "--", *targets] for command in (black, isort, flake8)]
+    mypy = [sys.executable, "-m", "mypy", "--config-file", str(root / "pyproject.toml")]
+    mypy += ["--python-executable", sys.executable, "--disallow-untyped-defs", "--warn-redundant-casts", "--no-implicit-optional"]
+
+    return [*commands, [*mypy, "--", *(f"./{path}" for path in python_files(replace(config, test_paths=[])))]]

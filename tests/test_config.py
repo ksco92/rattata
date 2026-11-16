@@ -112,3 +112,54 @@ def test_load_config_rejects_invalid_settings(tmp_path: Path, text: str, message
 
     with pytest.raises(ConfigError, match=message):
         load_config(pyproject)
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        "disallow_untyped_defs",
+        "allow_untyped_defs",
+        "no_disallow_untyped_defs",
+        "warn_redundant_casts",
+        "no_warn_redundant_casts",
+        "no_implicit_optional",
+        "implicit_optional",
+    ],
+)
+@pytest.mark.parametrize(
+    ("text", "place"),
+    [
+        ("[tool.mypy]\n{key} = false\n", r"\[tool.mypy\]"),
+        (
+            '[[tool.mypy.overrides]]\nmodule = ["a.*", "b"]\n{key} = false\n',
+            r"\[\[tool.mypy.overrides\]\] for module \['a.\*', 'b'\]",
+        ),
+        (
+            '[tool.mypy]\nplugins = []\n\n[[tool.mypy.overrides]]\nmodule = "c"\n{key} = true\n',
+            r"\[\[tool.mypy.overrides\]\] for module 'c'",
+        ),
+    ],
+    ids=["table", "override-list", "override-after-table"],
+)
+def test_load_config_rejects_locked_mypy_keys(tmp_path: Path, key: str, text: str, place: str) -> None:
+    """A locked mypy key, in any spelling mypy accepts, is rejected with the key and where it was set."""
+    pyproject = write_pyproject(tmp_path, '[tool.max-lint]\npaths = ["src"]\n\n' + text.format(key=key))
+
+    with pytest.raises(ConfigError, match=f"'{key}' is set in {place}, but max-lint fixes it"):
+        load_config(pyproject)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        '[tool.max-lint]\npaths = ["src"]\n\n[tool]\nmypy = "strict"\n',
+        '[tool.max-lint]\npaths = ["src"]\n\n[tool.mypy]\noverrides = "x"\n',
+        '[tool.max-lint]\npaths = ["src"]\n\n[tool.mypy]\noverrides = ["x"]\n',
+    ],
+)
+def test_load_config_rejects_malformed_mypy_tables(tmp_path: Path, text: str) -> None:
+    """A mypy table or overrides list of the wrong type is a configuration error."""
+    pyproject = write_pyproject(tmp_path, text)
+
+    with pytest.raises(ConfigError, match=r"'mypy' in \[tool\] must be a table and its 'overrides' a list of tables"):
+        load_config(pyproject)
