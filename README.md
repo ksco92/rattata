@@ -105,7 +105,44 @@ src/inventory/stock.py:4:1: DOC101 Function `restock`: Docstring contains fewer 
 src/inventory/stock.py:4:1: DOC103 Function `restock`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [count: int, item: str].
 ```
 
-Once flake8 passes, mypy runs last. With the docstring completed and a new `src/inventory/report.py` that passes a string where `restock` expects an int, the same command ends in mypy:
+Once flake8 passes, mypy runs last. With `src/inventory/__init__.py` and `tests/test_stock.py` as the previous command left them, a completed `restock` docstring in `src/inventory/stock.py`:
+
+```python
+# src/inventory/stock.py
+"""Stock levels per item."""
+
+
+def restock(levels: dict[str, int], item: str, count: int) -> dict[str, int]:
+    """
+    Return a copy of ``levels`` with ``count`` more of ``item``.
+
+    :param levels: current stock per item.
+    :param item: the item to restock.
+    :param count: how many to add.
+    :return: the updated stock.
+    """
+    return {**levels, item: levels.get(item, 0) + count}
+```
+
+and a new module that passes a string where `restock` expects an int:
+
+```python
+# src/inventory/report.py
+"""Stock report."""
+
+from inventory.stock import restock
+
+
+def weekly_delivery() -> dict[str, int]:
+    """
+    Return the stock after the weekly delivery.
+
+    :return: the updated stock.
+    """
+    return restock({"apple": 1}, "apple", "3")
+```
+
+the same command ends in mypy:
 
 ```console
 $ max-lint lint
@@ -119,7 +156,7 @@ The exit status is 0 when every step passes and 1 when a tool reports a failure.
 
 The style is bundled and fixed: line length 130 for black and isort (`profile = "black"`), and flake8 with flake8-annotations, flake8-docstrings, flake8-rst-docstrings, flake8-commas, flake8-multiline-containers and pydoclint (Sphinx style). black targets the Python versions allowed by `requires-python`. Settings for these tools in the project (`[tool.black]`, `[tool.isort]`, `.flake8`, `setup.cfg`, `tox.ini`, `.isort.cfg`) have no effect. Docstrings are parsed with the `raw` and `include` directives disabled, so flake8 reports each use as `RST299`.
 
-mypy checks the files under `paths` only, so test code is not type-checked unless a `paths` entry also covers it. It always runs with `disallow_untyped_defs`, `warn_redundant_casts` and `no_implicit_optional`. For everything else it reads the `[tool.mypy]` table and the `[[tool.mypy.overrides]]` entries of the project's `pyproject.toml`, such as `python_version`, `plugins` and per-module `ignore_missing_imports`; a project with no `[tool.mypy]` table works, and no other mypy configuration file (`mypy.ini`, `setup.cfg`) is read:
+mypy checks the files under `paths` only, so test code is not type-checked unless a `paths` entry also covers it. It always runs with `disallow_untyped_defs`, `warn_redundant_casts` and `no_implicit_optional`. For everything else it reads the `[tool.mypy]` table and the `[[tool.mypy.overrides]]` entries of the project's `pyproject.toml`, such as `python_version`, `plugins` and per-module `ignore_missing_imports`; a project with no `[tool.mypy]` table works, and no other mypy configuration file (`mypy.ini`, `setup.cfg`) is read. Plugins named there are loaded and run, and report, cache and path settings there can make mypy write and read files outside the project, so `max-lint lint` on a repository with a `[tool.mypy]` table is not a read-only operation:
 
 ```toml
 [tool.mypy]
