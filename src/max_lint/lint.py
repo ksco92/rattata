@@ -47,10 +47,8 @@ def python_files(config: Config) -> list[str]:
 
     for path in found:
         with contextlib.suppress(OSError):
-            status = os.stat(path)
-
-            if stat.S_ISREG(status.st_mode):
-                spellings.setdefault((status.st_dev, status.st_ino), os.path.relpath(path))
+            if stat.S_ISREG(os.stat(path).st_mode):
+                spellings.setdefault(_identity(path), os.path.relpath(path))
 
     result = sorted(spellings.values())
 
