@@ -21,7 +21,7 @@ Status (November 2026): max-lint is published on PyPI. The `lint` command runs b
 
 ## Install
 
-Requires Python 3.13 or newer and [uv](https://docs.astral.sh/uv/). Add max-lint to a project as a development dependency:
+Requires Python 3.13 or newer and [uv](https://docs.astral.sh/uv/). Add max-lint to a project as a development dependency, from a directory whose `pyproject.toml` has a `[project]` table with `name` and `version`:
 
 ```sh
 uv add --dev max-lint
@@ -205,7 +205,7 @@ Every path in `paths` and `test-paths` must exist; paths are relative to `pyproj
 
 ## Bundled style
 
-The tools are black, isort, flake8, mypy, pytest, pytest-cov, pytest-socket and coverage, each pinned to an exact version in [pyproject.toml](pyproject.toml). The flake8 plugins are flake8-annotations, flake8-docstrings, flake8-rst-docstrings, flake8-commas, flake8-multiline-containers and pydoclint.
+The tools are black, isort, flake8, mypy, pytest, pytest-cov, pytest-socket and coverage, each pinned to an exact version in [pyproject.toml](https://github.com/ksco92/rattata/blob/main/pyproject.toml). The flake8 plugins are flake8-annotations, flake8-docstrings, flake8-rst-docstrings, flake8-commas, flake8-multiline-containers and pydoclint.
 
 - black and isort use line length 130, and isort uses `profile = "black"`. black targets the Python versions allowed by `requires-python`.
 - flake8 selects `ANN401` in addition to its defaults and ignores `E203` and `E501`. pydoclint checks Sphinx-style docstrings without argument types in the docstring and skips private functions and return types.
@@ -260,9 +260,9 @@ Exit status 2 and a one-line message on stderr mean a configuration error in `py
 
 ## Contributing
 
-Setup, the checks a change must pass and the rules for the bundled style are in [CONTRIBUTING.md](CONTRIBUTING.md).
+Setup, the checks a change must pass and the rules for the bundled style are in [CONTRIBUTING.md](https://github.com/ksco92/rattata/blob/main/CONTRIBUTING.md).
 max-lint is maintained by Rodrigo Carvajal; bugs and proposals go in [GitHub issues](https://github.com/ksco92/rattata/issues).
 
 ## License
 
-Apache-2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+Apache-2.0. See [LICENSE](https://github.com/ksco92/rattata/blob/main/LICENSE) and [NOTICE](https://github.com/ksco92/rattata/blob/main/NOTICE).
