@@ -42,6 +42,11 @@ def test_sign() -> None:
 '''
 POSITIVE_ONLY_TEST = SIGN_TEST.replace('    assert sign(0) == "other"\n', "")
 BASE_FILES = {"pyproject.toml": BASE_PYPROJECT, "src/pkg/__init__.py": SIGN_MODULE, "tests/test_sign.py": SIGN_TEST}
+ROOT_MODULE_FILES = {
+    "pyproject.toml": '[tool.max-lint]\npaths = ["rootmod.py"]\ntest-paths = ["tests"]\ncoverage-source = ["rootmod"]\n',
+    "rootmod.py": SIGN_MODULE,
+    "tests/test_sign.py": SIGN_TEST.replace("from pkg", "from rootmod"),
+}
 MARKER_TEST = (
     '"""Tests that leave a marker."""\n\nfrom pathlib import Path\n\n\n'
     'def test_marker() -> None:\n    """Leave a file in the working directory."""\n    Path("ran").write_text("")\n'
@@ -270,20 +275,41 @@ def test_interrupted_pytest_run_exits_one_without_the_no_files_message(
     assert NO_FILES not in output
 
 
-def test_pytest_settings_of_the_project_are_read_and_the_working_directory_is_importable(
+def test_pythonpath_from_the_project_pytest_settings_is_read(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
 ) -> None:
-    """``pythonpath`` from the project's pytest settings works, and so does a package that is only importable from the project root."""
-    flat = {
-        "pyproject.toml": '[tool.max-lint]\npaths = ["flat"]\ntest-paths = ["tests"]\ncoverage-source = ["flat"]\n',
-        "flat/__init__.py": SIGN_MODULE,
-        "tests/test_sign.py": SIGN_TEST.replace("from pkg", "from flat"),
-    }
+    """A package that is importable only through ``pythonpath`` is found."""
+    assert run_max_lint(tmp_path, BASE_FILES, monkeypatch, capfd, "test")[0] == 0
 
-    assert run_max_lint(tmp_path / "pythonpath", BASE_FILES, monkeypatch, capfd, "test")[0] == 0
-    assert run_max_lint(tmp_path / "flat", flat, monkeypatch, capfd, "test")[0] == 0
+
+@pytest.mark.parametrize("arguments", [["test"], []], ids=["test", "bare"])
+def test_module_in_the_project_root_is_importable_by_the_tests(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+    arguments: list[str],
+) -> None:
+    """A project that is not installed passes, also after the lint tools ran with ``PYTHONSAFEPATH``."""
+    exit_code, output = run_max_lint(tmp_path, ROOT_MODULE_FILES, monkeypatch, capfd, *arguments)
+
+    assert exit_code == 0
+    assert "1 passed" in output
+
+
+def test_python_safe_path_set_by_the_user_reaches_pytest(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    """A value the user set is passed on unchanged, so the root module is not importable."""
+    monkeypatch.setenv("PYTHONSAFEPATH", "1")
+
+    exit_code, output = run_max_lint(tmp_path, ROOT_MODULE_FILES, monkeypatch, capfd, "test")
+
+    assert exit_code == 1
+    assert "ModuleNotFoundError" in output
 
 
 def test_tests_are_collected_with_the_importlib_import_mode(
