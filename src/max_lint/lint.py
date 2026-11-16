@@ -1,10 +1,11 @@
-"""Build the black, isort and flake8 commands that apply the bundled style."""
+"""Build the black, isort, flake8 and mypy commands that apply the bundled style."""
 
 import contextlib
 import os
 import re
 import stat
 import sys
+from dataclasses import replace
 from fnmatch import fnmatchcase
 from importlib.resources import files
 from pathlib import Path
@@ -101,7 +102,7 @@ def per_file_ignores(config: Config, targets: list[str]) -> str:
 
 def lint_commands(config: Config, check: bool, scratch: Path) -> list[list[str]]:
     """
-    Return the black, isort and flake8 commands, in the order they run.
+    Return the black, isort, flake8 and mypy commands, in the order they run.
 
     :param config: project settings.
     :param check: run black and isort in their check modes, which write nothing.
@@ -123,4 +124,8 @@ def lint_commands(config: Config, check: bool, scratch: Path) -> list[list[str]]
 
     flake8 = [sys.executable, "-P", "-m", "flake8", "--config", str(STYLE / "flake8.ini"), "--append-config", str(ignores)]
 
-    return [[*command, "--", *targets] for command in (black, isort, flake8)]
+    commands = [[*command, "--", *targets] for command in (black, isort, flake8)]
+    mypy = [sys.executable, "-P", "-m", "mypy", "--config-file", str(root / "pyproject.toml")]
+    mypy += ["--disallow-untyped-defs", "--warn-redundant-casts", "--no-implicit-optional"]
+
+    return [*commands, [*mypy, "--", *python_files(replace(config, test_paths=[]))]]

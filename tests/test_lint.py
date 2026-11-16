@@ -13,6 +13,8 @@ from typing import Self
 import pytest
 
 from max_lint.cli import main
+from max_lint.config import load_config
+from max_lint.lint import lint_commands
 
 PLAIN_PYPROJECT = '[tool.max-lint]\npaths = ["src"]\n'
 LONG_LINE = (
@@ -101,6 +103,10 @@ class Box:
         """
         self.size = size
 '''
+UNTYPED_FUNCTION = '"""Fixture module."""\n\n\ndef run():  # noqa: ANN201\n    """Do nothing."""\n'
+MYPY_ERROR = "src/mod.py:4: error: Function is missing a return type annotation  [no-untyped-def]"
+MISSING_IMPORT = '"""Fixture module."""\n\nimport missing_pkg\n\nVALUE = missing_pkg.VALUE\n'
+MISSING_IMPORT_OVERRIDE = '\n[[tool.mypy.overrides]]\nmodule = ["missing_pkg.*"]\nignore_missing_imports = true\n'
 
 
 class BeaconHandler(http.server.BaseHTTPRequestHandler):
@@ -235,7 +241,12 @@ def test_lint_separates_first_party_imports(
     module = '"""Fixture module."""\n\nimport os\nfrom app import helpers\nimport black\n\nVALUE = (os, helpers, black)\n'
     write_files(
         tmp_path,
-        {"pyproject.toml": f'[tool.max-lint]\npaths = ["{paths}"]\n', f"{package}/__init__.py": "", f"{package}/main.py": module},
+        {
+            "pyproject.toml": f'[tool.max-lint]\npaths = ["{paths}"]\n',
+            f"{package}/__init__.py": "",
+            f"{package}/helpers.py": '"""Helpers."""\n',
+            f"{package}/main.py": module,
+        },
     )
 
     exit_code, _ = lint(tmp_path, monkeypatch, capfd)
@@ -492,7 +503,10 @@ def test_path_outside_project_is_linted(
     assert (tmp_path / "shared/etl/job.py").read_text() == FORMATTED_MODULE
 
 
-@pytest.mark.parametrize("planted", ["black.py", "click.py", "isort/__init__.py", "flake8/__init__.py"])
+@pytest.mark.parametrize(
+    "planted",
+    ["black.py", "click.py", "isort/__init__.py", "flake8/__init__.py", "mypy.py", "pathspec/__init__.py"],
+)
 def test_project_modules_named_like_tools_are_not_imported(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -743,3 +757,229 @@ def test_symlinked_file_is_a_test_file_only_if_its_target_is(
         "tests/test_link.py:4:1: DOC103",
         "tests/test_link.py:4:1: DOC201",
     ]
+
+
+@pytest.mark.parametrize("arguments", [("--check",), ()], ids=["check", "write"])
+def test_mypy_runs_last_over_source_paths(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+    arguments: tuple[str, ...],
+) -> None:
+    """An unannotated function under ``paths`` fails the mypy step with mypy's own error."""
+    write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT, "src/mod.py": UNTYPED_FUNCTION})
+
+    exit_code, output = lint(tmp_path, monkeypatch, capfd, *arguments)
+
+    assert exit_code == 1
+    assert MYPY_ERROR in output
+    assert "Found 1 error in 1 file (checked 1 source file)" in output
+
+
+def test_mypy_skips_test_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixture[str]) -> None:
+    """The same unannotated function under ``test-paths`` does not fail the mypy step."""
+    write_files(
+        tmp_path,
+        {
+            "pyproject.toml": '[tool.max-lint]\npaths = ["src"]\ntest-paths = ["tests"]\n',
+            "src/mod.py": FORMATTED_MODULE,
+            "tests/test_mod.py": UNTYPED_FUNCTION,
+        },
+    )
+
+    exit_code, output = lint(tmp_path, monkeypatch, capfd, "--check")
+
+    assert exit_code == 0
+    assert "Success: no issues found in 1 source file" in output
+
+
+def test_mypy_does_not_run_after_a_flake8_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    """A flake8 failure stops the command before mypy starts."""
+    write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT, "src/mod.py": "def run():\n    pass\n"})
+
+    exit_code, output = lint(tmp_path, monkeypatch, capfd, "--check")
+
+    assert exit_code == 1
+    assert "src/mod.py:1:1: D100" in output
+    assert "no-untyped-def" not in output
+
+
+@pytest.mark.parametrize(
+    ("source", "error"),
+    [
+        (
+            '"""Fixture module."""\n\nfrom typing import cast\n\nVALUE = cast(int, 1)\n',
+            'src/mod.py:5: error: Redundant cast to "int"',
+        ),
+        (
+            '"""Fixture module."""\n\n\ndef run(value: int = None) -> None:\n    """\n    Do nothing.\n\n    :param value: unused.\n    """\n',
+            'src/mod.py:4: error: Incompatible default for parameter "value"',
+        ),
+    ],
+    ids=["redundant-cast", "implicit-optional"],
+)
+def test_mypy_locked_settings_apply_without_project_settings(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+    source: str,
+    error: str,
+) -> None:
+    """A project with no ``[tool.mypy]`` table is checked with the locked settings."""
+    write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT, "src/mod.py": source})
+
+    exit_code, output = lint(tmp_path, monkeypatch, capfd, "--check")
+
+    assert exit_code == 1
+    assert error in output
+
+
+def test_mypy_command_carries_the_locked_settings(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The mypy command is isolated from the working directory, reads only the project's pyproject.toml and passes the locked flags."""
+    write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT, "src/mod.py": FORMATTED_MODULE})
+    monkeypatch.chdir(tmp_path)
+
+    commands = lint_commands(load_config(Path("pyproject.toml")), check=True, scratch=tmp_path)
+
+    assert commands[-1] == [
+        sys.executable,
+        "-P",
+        "-m",
+        "mypy",
+        "--config-file",
+        str(tmp_path.resolve() / "pyproject.toml"),
+        "--disallow-untyped-defs",
+        "--warn-redundant-casts",
+        "--no-implicit-optional",
+        "--",
+        "src/mod.py",
+    ]
+
+
+@pytest.mark.parametrize(("overrides", "exit_code"), [(MISSING_IMPORT_OVERRIDE, 0), ("", 1)], ids=["with-override", "without"])
+def test_mypy_reads_project_import_overrides(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+    overrides: str,
+    exit_code: int,
+) -> None:
+    """An ``ignore_missing_imports`` override in ``[[tool.mypy.overrides]]`` decides whether an unresolved import fails."""
+    write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT + overrides, "src/mod.py": MISSING_IMPORT})
+
+    result, output = lint(tmp_path, monkeypatch, capfd, "--check")
+
+    assert result == exit_code
+    assert ("Cannot find implementation or library stub" in output) == bool(exit_code)
+
+
+def test_mypy_ignores_other_mypy_config_files(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    """A ``mypy.ini`` that relaxes a locked setting for a module does not change the result."""
+    write_files(
+        tmp_path,
+        {
+            "pyproject.toml": PLAIN_PYPROJECT,
+            "src/mod.py": UNTYPED_FUNCTION,
+            "mypy.ini": "[mypy-mod]\ndisallow_untyped_defs = False\n",
+        },
+    )
+
+    exit_code, output = lint(tmp_path, monkeypatch, capfd, "--check")
+
+    assert exit_code == 1
+    assert MYPY_ERROR in output
+
+
+def test_mypy_loads_plugins_named_in_the_project(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    """A plugin given as a file path in ``[tool.mypy]`` is loaded."""
+    marker = tmp_path / "loaded"
+    write_files(
+        tmp_path,
+        {
+            "pyproject.toml": PLAIN_PYPROJECT + '\n[tool.mypy]\nplugins = ["plugin.py"]\n',
+            "src/mod.py": FORMATTED_MODULE,
+            "plugin.py": f"from mypy.plugin import Plugin\n\nopen({str(marker)!r}, 'w').close()\n\n\ndef plugin(version):\n    return Plugin\n",
+        },
+    )
+
+    exit_code, _ = lint(tmp_path, monkeypatch, capfd, "--check")
+
+    assert exit_code == 0
+    assert marker.exists()
+
+
+def test_mypy_leaves_out_excluded_files(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    """A file matched by ``exclude`` is not type-checked."""
+    write_files(
+        tmp_path,
+        {
+            "pyproject.toml": '[tool.max-lint]\npaths = ["src"]\nexclude = ["src/generated.py"]\n',
+            "src/mod.py": FORMATTED_MODULE,
+            "src/generated.py": UNTYPED_FUNCTION,
+        },
+    )
+
+    exit_code, output = lint(tmp_path, monkeypatch, capfd, "--check")
+
+    assert exit_code == 0
+    assert "Success: no issues found in 1 source file" in output
+
+
+def test_mypy_checks_a_file_reached_twice_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    """A file reached through a symlinked directory and through its target is type-checked once."""
+    write_files(tmp_path, {"pyproject.toml": '[tool.max-lint]\npaths = ["src", "link"]\n', "src/pkg/mod.py": UNTYPED_FUNCTION})
+    (tmp_path / "link").symlink_to(tmp_path / "src/pkg", target_is_directory=True)
+
+    exit_code, output = lint(tmp_path, monkeypatch, capfd, "--check")
+
+    assert exit_code == 1
+    assert output.count("no-untyped-def") == 1
+    assert "Found 1 error in 1 file (checked 1 source file)" in output
+
+
+@pytest.mark.parametrize(
+    ("overrides", "place"),
+    [
+        ("\n[tool.mypy]\ndisallow_untyped_defs = false\n", "[tool.mypy]"),
+        (
+            '\n[[tool.mypy.overrides]]\nmodule = "mod"\ndisallow_untyped_defs = false\n',
+            "[[tool.mypy.overrides]] for module 'mod'",
+        ),
+    ],
+    ids=["table", "override"],
+)
+def test_locked_mypy_key_is_rejected_before_any_tool_runs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+    overrides: str,
+    place: str,
+) -> None:
+    """A locked key in the project's mypy settings exits 2, naming the key, and rewrites nothing."""
+    write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT + overrides, "src/mod.py": UNFORMATTED_MODULE})
+
+    exit_code, output = lint(tmp_path, monkeypatch, capfd)
+
+    assert exit_code == 2
+    assert output == f"max-lint: 'disallow_untyped_defs' is set in {place}, but max-lint fixes it; remove it.\n"
+    assert (tmp_path / "src/mod.py").read_text() == UNFORMATTED_MODULE
