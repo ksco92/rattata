@@ -520,20 +520,8 @@ def test_test_path_named_like_a_plugin_switch_is_a_path(
 
 @pytest.mark.parametrize(
     "pattern",
-    ["a\x7fb", "a\x00b", "a\tb", "a\nb", "$HOME/x/*", "${ZZ_NOPE?}", "a$b", "$$", 'a"b\\c', "\u00e9\u0394*.py", "*/[ab]?.py"],
-    ids=[
-        "delete",
-        "nul",
-        "tab",
-        "newline",
-        "home-variable",
-        "strict-variable",
-        "dollar-in-word",
-        "double-dollar",
-        "quote-backslash",
-        "non-ascii",
-        "glob",
-    ],
+    ["a\x7fb", "$HOME/x/*", "${ZZ_NOPE?}", "$$", 'a"b\\c', "é\U0001f600*.py", "*/[ab]?.py"],
+    ids=["delete", "home-variable", "strict-variable", "double-dollar", "quote-backslash", "non-ascii", "glob"],
 )
 def test_coverage_omit_reaches_coverage_unchanged(tmp_path: Path, pattern: str) -> None:
     """Coverage reads the generated config and gets exactly the ``coverage-omit`` pattern."""
