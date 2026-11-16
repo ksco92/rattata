@@ -1,5 +1,6 @@
 """Load the ``[tool.max-lint]`` table that declares what a project owns."""
 
+import os
 import re
 import tomllib
 from dataclasses import dataclass
@@ -59,12 +60,15 @@ def load_config(pyproject: Path) -> Config:
 
     table = _table(document, "tool").get("max-lint")
 
-    if not isinstance(table, dict):
+    if table is None:
         raise ConfigError(f'{pyproject} has no [tool.max-lint] table; add one with paths = ["src"].')
+
+    if not isinstance(table, dict):
+        raise ConfigError("'max-lint' in [tool] must be a table; write it as [tool.max-lint] with paths = [\"src\"].")
 
     for key in table:
         if key not in KNOWN_KEYS:
-            raise ConfigError(f"unknown key '{key}' in [tool.max-lint]; remove it (known keys: {', '.join(KNOWN_KEYS)}).")
+            raise ConfigError(f"unknown key {key!r} in [tool.max-lint]; remove it (known keys: {', '.join(KNOWN_KEYS)}).")
 
     if "paths" not in table:
         raise ConfigError("[tool.max-lint] is missing 'paths'; add the source paths, for example paths = [\"src\"].")
@@ -86,10 +90,17 @@ def load_config(pyproject: Path) -> Config:
             "'per-file-ignores' in [tool.max-lint] must be a table of non-empty path glob to a list of flake8 codes such as \"D100\".",
         )
 
+    for glob in per_file_ignores:
+        if os.path.isabs(glob) or glob.endswith("/"):
+            raise ConfigError(
+                f"'per-file-ignores' in [tool.max-lint] has the glob {glob!r}, which matches no file; "
+                "use a path relative to pyproject.toml that ends in a file name or pattern.",
+            )
+
     for key in ("paths", "test-paths"):
         for path in table.get(key, []):
             if not (pyproject.parent / path).exists():
-                raise ConfigError(f"'{key}' in [tool.max-lint] lists '{path}', which does not exist; fix or remove it.")
+                raise ConfigError(f"'{key}' in [tool.max-lint] lists {path!r}, which does not exist; fix or remove it.")
 
     if not isinstance(_table(document, "project").get("requires-python", ""), str):
         raise ConfigError("'requires-python' in [project] must be a string, for example \">=3.13\".")

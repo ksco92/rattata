@@ -69,8 +69,8 @@ def test_load_config_without_pyproject_names_the_file(tmp_path: Path) -> None:
     [
         ("[tool.max-lint\n", "is not valid TOML"),
         ("[tool.black]\nline-length = 100\n", r"no \[tool.max-lint\] table"),
-        ('[tool]\nmax-lint = ["src"]\n', r"no \[tool.max-lint\] table"),
         ('[tool.max-lint]\npaths = ["src"]\ncoverage-source = ["src"]\n', "unknown key 'coverage-source'"),
+        ('[tool.max-lint]\npaths = ["src"]\n"a\\nb" = 1\n', r"unknown key 'a\\nb' in"),
         ('[tool.max-lint]\ntest-paths = ["tests"]\n', "missing 'paths'"),
         ('[tool.max-lint]\npaths = "src"\n', "'paths' in .* must be a list of non-empty strings"),
         ("[tool.max-lint]\npaths = []\n", "'paths' in .* is empty"),
@@ -85,6 +85,13 @@ def test_load_config_without_pyproject_names_the_file(tmp_path: Path) -> None:
         ('[tool.max-lint]\npaths = ["src"]\ntest-paths = ["test"]\n', "'test-paths' in .* lists 'test', which does not exist"),
         ('[project]\nrequires-python = 3.13\n\n[tool.max-lint]\npaths = ["src"]\n', "'requires-python' in .* must be a string"),
         ('tool = "x"\n', "'tool' in pyproject.toml must be a table"),
+        ('[tool]\nmax-lint = ["src"]\n', r"'max-lint' in \[tool\] must be a table"),
+        ("[tool]\nmax-lint = 3\n", r"'max-lint' in \[tool\] must be a table"),
+        (
+            '[tool.max-lint]\npaths = ["src"]\nper-file-ignores = { "/src/top.py" = ["D100"] }\n',
+            "glob '/src/top.py', which matches no file",
+        ),
+        ('[tool.max-lint]\npaths = ["src"]\nper-file-ignores = { "src/" = ["D100"] }\n', "glob 'src/', which matches no file"),
         ('project = "x"\n\n[tool.max-lint]\npaths = ["src"]\n', "'project' in pyproject.toml must be a table"),
         ('[tool.max-lint]\npaths = [""]\n', "'paths' in .* must be a list of non-empty strings"),
         ('[tool.max-lint]\npaths = ["src"]\nper-file-ignores = { "" = ["D100"] }\n', "'per-file-ignores' in .* must be a table"),

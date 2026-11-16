@@ -1,7 +1,10 @@
 """Tests for ``max-lint lint`` against the real black, isort and flake8."""
 
+import http.server
 import re
+import threading
 from pathlib import Path
+from typing import Self
 
 import pytest
 
@@ -94,6 +97,18 @@ class Box:
         """
         self.size = size
 '''
+
+
+class BeaconHandler(http.server.BaseHTTPRequestHandler):
+    """Record the path of each GET request and answer it with no content."""
+
+    received: list[str] = []
+
+    def do_GET(self: Self) -> None:
+        """Record the request path."""
+        self.received.append(self.path)
+        self.send_response(204)
+        self.end_headers()
 
 
 def write_files(root: Path, files: dict[str, str]) -> None:
@@ -312,7 +327,7 @@ def test_check_mode_reports_unsorted_imports_without_writing(
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
 ) -> None:
-    """Check mode stops at isort's failure, also inside a ``build`` directory, and leaves the file byte-identical."""
+    """Check mode stops at isort's failure and leaves the file byte-identical."""
     original = b'"""Fixture module."""\n\nimport sys\nimport os\nimport json\n\nVALUE = (os.sep, sys.platform)\n'
     write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT})
     (tmp_path / "src/build").mkdir(parents=True)
@@ -494,3 +509,104 @@ def test_project_modules_named_like_tools_are_not_imported(
     assert "would reformat src/mod.py" in check[1]
     assert (tmp_path / "src/mod.py").read_text() == FORMATTED_MODULE
     assert not marker.exists()
+
+
+@pytest.mark.parametrize("arguments", [("--check",), ()], ids=["check", "write"])
+def test_docstring_parsing_ignores_project_docutils_config(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+    arguments: tuple[str, ...],
+) -> None:
+    """A ``docutils.conf`` in the project, even one named by ``DOCUTILSCONFIG``, does not open the files it names."""
+    outside = tmp_path / "outside.txt"
+    outside.write_text("unchanged\n")
+    write_files(
+        tmp_path,
+        {
+            "project/pyproject.toml": PLAIN_PYPROJECT,
+            "project/docutils.conf": f"[general]\nwarning_stream: {outside}\nrecord_dependencies: {outside}\n",
+            "project/src/mod.py": '"""Do *bad."""\n',
+        },
+    )
+
+    monkeypatch.setenv("DOCUTILSCONFIG", str(tmp_path / "project/docutils.conf"))
+
+    exit_code, output = lint(tmp_path / "project", monkeypatch, capfd, *arguments)
+
+    assert exit_code == 1
+    assert flake8_codes(output) == ["src/mod.py:1:1: RST213"]
+    assert outside.read_text() == "unchanged\n"
+
+
+def test_docstring_raw_and_include_directives_are_disabled(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    """A ``raw`` directive with a URL fetches nothing, and ``raw`` and ``include`` are reported as disabled."""
+    BeaconHandler.received.clear()
+    server = http.server.HTTPServer(("127.0.0.1", 0), BeaconHandler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    docstring = (
+        f'"""\nFixture module.\n\n.. raw:: html\n   :url: http://127.0.0.1:{server.server_address[1]}/beacon\n\n'
+        f'.. include:: {tmp_path}\n\n.. raw:: html\n\n   <b>inline</b>\n"""\n'
+    )
+    write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT, "src/mod.py": docstring})
+
+    exit_code, output = lint(tmp_path, monkeypatch, capfd, "--check")
+    server.shutdown()
+    server.server_close()
+
+    assert BeaconHandler.received == []
+    assert exit_code == 1
+    assert re.findall(r"RST299 .*", output) == [
+        'RST299 "raw" directive disabled.',
+        'RST299 "include" directive disabled.',
+        'RST299 "raw" directive disabled.',
+    ]
+
+
+def test_symlinked_directory_listed_with_its_target_is_linted_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    """A file reached through a symlinked directory and through its target is reported once."""
+    write_files(tmp_path, {"pyproject.toml": '[tool.max-lint]\npaths = ["src", "link"]\n', "src/pkg/mod.py": "VALUE = 1\n"})
+    (tmp_path / "link").symlink_to(tmp_path / "src/pkg", target_is_directory=True)
+
+    exit_code, output = lint(tmp_path, monkeypatch, capfd, "--check")
+
+    assert exit_code == 1
+    assert "1 file would be left unchanged." in output
+    assert flake8_codes(output) == ["src/pkg/mod.py:1:1: D100"]
+
+
+@pytest.mark.parametrize(
+    ("listed", "directory", "link"),
+    [("real", "real", "tests"), ("link", "tests", "link")],
+    ids=["test-path-is-link", "path-is-link"],
+)
+def test_symlinked_test_path_exempts_the_resolved_files(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+    listed: str,
+    directory: str,
+    link: str,
+) -> None:
+    """A file whose resolved location is under a test path is exempt from DOC under any spelling."""
+    write_files(
+        tmp_path,
+        {
+            "pyproject.toml": f'[tool.max-lint]\npaths = ["{listed}"]\ntest-paths = ["tests"]\n',
+            f"{directory}/test_mod.py": UNDOCUMENTED_FUNCTION,
+        },
+    )
+    (tmp_path / link).symlink_to(tmp_path / directory, target_is_directory=True)
+
+    exit_code, output = lint(tmp_path, monkeypatch, capfd, "--check")
+
+    assert exit_code == 0
+    assert flake8_codes(output) == []

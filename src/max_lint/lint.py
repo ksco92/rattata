@@ -16,6 +16,7 @@ STYLE = files("max_lint") / "style"
 BUNDLED_EXCLUDE = (".git", ".venv")
 INIT_CODES = ("D104", "F401")
 FLAKE8_SEPARATORS = re.compile(r"[\s:,]")
+TOOL_ENVIRONMENT = {"DOCUTILSCONFIG": str(STYLE / "docutils.conf")}
 
 
 def python_files(config: Config) -> list[str]:
@@ -23,7 +24,7 @@ def python_files(config: Config) -> list[str]:
     List the Python files under ``paths`` and ``test-paths``, minus the excluded ones.
 
     :param config: project settings; exclude patterns follow flake8's ``exclude`` matching.
-    :return: normalized paths relative to the current directory, sorted and without duplicates.
+    :return: paths relative to the current directory, sorted, with each file once under the first spelling found.
     :raises ConfigError: when no Python file is left to lint.
     """
     found = expand_paths(
@@ -32,7 +33,13 @@ def python_files(config: Config) -> list[str]:
         filename_patterns=["*.py"],
         exclude=normalize_paths([*BUNDLED_EXCLUDE, *config.exclude]),
     )
-    result = sorted({os.path.relpath(path) for path in found})
+    spellings: dict[tuple[int, int], str] = {}
+
+    for path in found:
+        status = os.stat(path)
+        spellings.setdefault((status.st_dev, status.st_ino), os.path.relpath(path))
+
+    result = sorted(spellings.values())
 
     if not result:
         raise ConfigError(
@@ -49,15 +56,15 @@ def per_file_ignores(config: Config, targets: list[str]) -> str:
     :param config: project settings.
     :param targets: paths from ``python_files``.
     :return: the config file text.
-    :raises ConfigError: when a target that needs ignored codes has whitespace, ``:`` or ``,`` in its path.
+    :raises ConfigError: when a target that needs ignored codes has whitespace, ``:``, ``,`` or a non-UTF-8 name.
     """
-    test_roots = [Path(os.path.abspath(path)) for path in config.test_paths]
+    test_roots = [Path(path).resolve() for path in config.test_paths]
     lines = ["[flake8]", "per-file-ignores ="]
 
     for target in targets:
         codes = list(INIT_CODES) if os.path.basename(target) == "__init__.py" else []
 
-        if any(Path(os.path.abspath(target)).is_relative_to(root) for root in test_roots):
+        if any(Path(target).resolve().is_relative_to(root) for root in test_roots):
             codes.append("DOC")
 
         for glob, entry_codes in config.per_file_ignores.items():
@@ -67,10 +74,10 @@ def per_file_ignores(config: Config, targets: list[str]) -> str:
         if not codes:
             continue
 
-        if FLAKE8_SEPARATORS.search(target):
+        if FLAKE8_SEPARATORS.search(target) or target.encode("utf-8", "replace").decode("utf-8") != target:
             raise ConfigError(
-                f"'{target}' needs ignored codes from [tool.max-lint] but flake8 cannot name a path with whitespace, ':' or ','; "
-                "rename it or add it to 'exclude'.",
+                f"{target!r} needs ignored codes from [tool.max-lint] but flake8 cannot name a path with whitespace, ':', ',' "
+                "or a name that is not UTF-8; rename it or add it to 'exclude'.",
             )
 
         pattern = re.sub(r"([*?[])", r"[\1]", target)
@@ -90,7 +97,7 @@ def lint_commands(config: Config, check: bool, scratch: Path) -> list[list[str]]
     """
     targets = python_files(config)
     ignores = scratch / "per-file-ignores.ini"
-    ignores.write_text(per_file_ignores(config, targets))
+    ignores.write_text(per_file_ignores(config, targets), encoding="utf-8")
     formatters = str(STYLE / "formatters.toml")
     root = Path.cwd()
     black = [sys.executable, "-P", "-m", "black", "--config", formatters]
