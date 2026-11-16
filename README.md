@@ -1,10 +1,11 @@
 # max-lint
 
 [![ci](https://github.com/ksco92/rattata/actions/workflows/ci.yml/badge.svg)](https://github.com/ksco92/rattata/actions/workflows/ci.yml)
+[![PyPI version](https://img.shields.io/pypi/v/max-lint)](https://pypi.org/project/max-lint/)
 
 **One command that runs black, isort, flake8, mypy and pytest with a single shared configuration. Every tool is pinned to an exact version.**
 
-Status (November 2026): max-lint is not yet on PyPI. The `lint` command runs black, isort, flake8 and mypy with the bundled style, the `test` command runs pytest with branch coverage and a coverage floor, and a bare `max-lint` runs both.
+Status (November 2026): max-lint is published on PyPI. The `lint` command runs black, isort, flake8 and mypy with the bundled style, the `test` command runs pytest with branch coverage and a coverage floor, and a bare `max-lint` runs both.
 
 ## Contents
 
@@ -20,22 +21,21 @@ Status (November 2026): max-lint is not yet on PyPI. The `lint` command runs bla
 
 ## Install
 
-Requires Python 3.13 or newer and [uv](https://docs.astral.sh/uv/). max-lint is not on PyPI, so it is installed from the `ksco92/rattata` repository:
+Requires Python 3.13 or newer and [uv](https://docs.astral.sh/uv/). Add max-lint to a project as a development dependency:
 
 ```sh
-git clone https://github.com/ksco92/rattata
-cd rattata
-uv sync
+uv add --dev max-lint
 ```
 
 ## Usage
 
-A project declares what it owns in a `[tool.max-lint]` table of its `pyproject.toml`. Run the commands from the directory that holds `pyproject.toml`; until max-lint is published, from a checkout with `uv run --project /path/to/rattata max-lint`. This project:
+A project declares what it owns in a `[tool.max-lint]` table of its `pyproject.toml`. Run the commands with `uv run` from the directory that holds `pyproject.toml`. This project, with max-lint added as above:
 
 ```toml
 # pyproject.toml
 [project]
 name = "inventory"
+version = "0.1.0"
 requires-python = ">=3.13"
 
 [tool.max-lint]
@@ -82,7 +82,7 @@ def test_restock_adds_to_existing_item() -> None:
 `max-lint lint --check` on the example:
 
 ```console
-$ max-lint lint --check
+$ uv run max-lint lint --check
 would reformat src/inventory/stock.py
 would reformat tests/test_stock.py
 
@@ -93,7 +93,7 @@ Oh no! 💥 💔 💥
 `max-lint lint` rewrites the files with black, then isort, then runs flake8 and mypy:
 
 ```console
-$ max-lint lint
+$ uv run max-lint lint
 reformatted src/inventory/stock.py
 reformatted tests/test_stock.py
 
@@ -143,7 +143,7 @@ def weekly_delivery() -> dict[str, int]:
 the same command ends in mypy:
 
 ```console
-$ max-lint lint
+$ uv run max-lint lint
 All done! ✨ 🍰 ✨
 4 files left unchanged.
 src/inventory/report.py:12: error: Argument 3 to "restock" has incompatible type "str"; expected "int"  [arg-type]
@@ -153,7 +153,7 @@ Found 1 error in 1 file (checked 3 source files)
 `max-lint test` runs pytest over `test-paths` and measures `coverage-source` with branch coverage. Delete `src/inventory/report.py` from the example above, which leaves `stock.py` as completed there, and the tests pass:
 
 ```console
-$ max-lint test
+$ uv run max-lint test
 ============================= test session starts ==============================
 platform <platform> -- Python <python>, pytest-<version>, pluggy-<version>
 rootdir: <project>
@@ -182,7 +182,7 @@ The output shows `<project>` for the project directory, `<tmp>` for a temporary 
 A bare `max-lint` on the example project as it was for the passing test run prints the lint tools' results first, followed by the pytest output shown above:
 
 ```console
-$ max-lint
+$ uv run max-lint
 All done! ✨ 🍰 ✨
 3 files left unchanged.
 Success: no issues found in 2 source files
@@ -241,7 +241,7 @@ A project that sets one of the three locked settings in `[tool.mypy]` or in an o
 Every command stops at the first step that fails. The exit status is 0 when every step passes and 1 when a tool reports a failure. The test step also exits 1 when coverage measures no file that contains a statement, even if every test passed. With `coverage-omit = ["src/inventory/stock.py"]` added to the example's `[tool.max-lint]`, the only file left in the measurement is the docstring-only `__init__.py`. The output is the same as in the passing run except that the `stock.py` row is gone, `TOTAL` counts no statements, and the last line is added:
 
 ```console
-$ max-lint test
+$ uv run max-lint test
 src/inventory/__init__.py       0      0      0      0  100.00%
 TOTAL                           0      0      0      0  100.00%
 max-lint: coverage measured no files that contain statements; check 'coverage-source' and 'coverage-omit' in [tool.max-lint].
