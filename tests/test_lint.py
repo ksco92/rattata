@@ -1,7 +1,11 @@
 """Tests for ``max-lint lint`` against the real black, isort and flake8."""
 
 import http.server
+import os
 import re
+import signal
+import subprocess
+import sys
 import threading
 from pathlib import Path
 from typing import Self
@@ -617,11 +621,12 @@ def test_unresolvable_python_entries_are_skipped(
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
 ) -> None:
-    """Dangling and looping symlinks named like Python files are left out and the rest is linted."""
+    """Dangling and looping symlinks and a device named like Python files are left out and the rest is linted."""
     write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT, "src/mod.py": FORMATTED_MODULE})
     (tmp_path / "src/dangling.py").symlink_to("nowhere.py")
     (tmp_path / "src/loop.py").symlink_to("loop.py")
     (tmp_path / "src/.#mod.py").symlink_to("user@host.local.12345:1700000000")
+    (tmp_path / "src/null.py").symlink_to("/dev/null")
 
     exit_code, output = lint(tmp_path, monkeypatch, capfd, "--check")
 
@@ -685,3 +690,56 @@ def test_case_variant_test_path_exempts_its_files(
 
     assert exit_code == 0
     assert flake8_codes(output) == []
+
+
+def test_fifo_and_endless_device_are_left_out(tmp_path: Path) -> None:
+    """A FIFO and a symlink to ``/dev/zero`` named like Python files are not linted."""
+    write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT, "src/mod.py": FORMATTED_MODULE})
+    os.mkfifo(tmp_path / "src/fifo.py")
+    (tmp_path / "src/zero.py").symlink_to("/dev/zero")
+    process = subprocess.Popen(
+        [str(Path(sys.executable).parent / "max-lint"), "lint", "--check"],
+        cwd=tmp_path,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        start_new_session=True,
+    )
+
+    try:
+        output, _ = process.communicate(timeout=60)
+    except subprocess.TimeoutExpired:
+        os.killpg(process.pid, signal.SIGKILL)
+        process.communicate()
+        raise
+
+    assert process.returncode == 0
+    assert "1 file would be left unchanged." in output
+
+
+def test_symlinked_file_is_a_test_file_only_if_its_target_is(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    """A symlinked file is exempt from DOC exactly when its target is under a test path."""
+    write_files(
+        tmp_path,
+        {
+            "pyproject.toml": '[tool.max-lint]\npaths = ["src"]\ntest-paths = ["tests"]\n',
+            "other/mod.py": UNDOCUMENTED_FUNCTION,
+            "tests/test_real.py": UNDOCUMENTED_FUNCTION,
+        },
+    )
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src/link.py").symlink_to(tmp_path / "tests/test_real.py")
+    (tmp_path / "tests/test_link.py").symlink_to(tmp_path / "other/mod.py")
+
+    exit_code, output = lint(tmp_path, monkeypatch, capfd, "--check")
+
+    assert exit_code == 1
+    assert flake8_codes(output) == [
+        "tests/test_link.py:4:1: DOC101",
+        "tests/test_link.py:4:1: DOC103",
+        "tests/test_link.py:4:1: DOC201",
+    ]

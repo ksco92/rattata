@@ -1,7 +1,9 @@
 """Build the black, isort and flake8 commands that apply the bundled style."""
 
+import contextlib
 import os
 import re
+import stat
 import sys
 from fnmatch import fnmatchcase
 from importlib.resources import files
@@ -32,7 +34,7 @@ def python_files(config: Config) -> list[str]:
 
     :param config: project settings; exclude patterns follow flake8's ``exclude`` matching.
     :return: paths relative to the current directory, sorted, with each file once under the first spelling found and
-        entries that resolve to no file left out.
+        entries that do not resolve to a regular file left out.
     :raises ConfigError: when no Python file is left to lint.
     """
     found = expand_paths(
@@ -44,10 +46,11 @@ def python_files(config: Config) -> list[str]:
     spellings: dict[tuple[int, int], str] = {}
 
     for path in found:
-        try:
-            spellings.setdefault(_identity(path), os.path.relpath(path))
-        except OSError:
-            continue
+        with contextlib.suppress(OSError):
+            status = os.stat(path)
+
+            if stat.S_ISREG(status.st_mode):
+                spellings.setdefault((status.st_dev, status.st_ino), os.path.relpath(path))
 
     result = sorted(spellings.values())
 
