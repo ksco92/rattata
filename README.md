@@ -4,7 +4,7 @@
 
 **One command that runs black, isort, flake8, mypy and pytest with a single shared configuration. Every tool is pinned to an exact version.**
 
-Status (November 2026): max-lint is not yet on PyPI. The `lint` command runs black, isort, flake8 and mypy with the bundled style, the `test` command runs pytest with branch coverage and a 95% floor, and a bare `max-lint` runs both.
+Status (November 2026): max-lint is not yet on PyPI. The `lint` command runs black, isort, flake8 and mypy with the bundled style, the `test` command runs pytest with branch coverage and a coverage floor, and a bare `max-lint` runs both.
 
 ## Contents
 
@@ -79,7 +79,7 @@ def test_restock_adds_to_existing_item() -> None:
     assert restock({'apple': 1}, 'apple', 2) == {'apple': 3}
 ```
 
-`max-lint lint --check` runs black and isort in their check modes, then flake8 and mypy, and rewrites no files. It stops at the first step that fails:
+`max-lint lint --check` on the example:
 
 ```console
 $ max-lint lint --check
@@ -177,9 +177,9 @@ Required test coverage of 95% reached. Total coverage: 100.00%
 ============================== 1 passed in <seconds>s ===============================
 ```
 
-The output shows `<project>` for the project directory, `<tmp>` for a temporary directory, `<platform>` for the operating system, `<python>` for the Python version, `<python-build>` for the Python version with its release level, `<version>` for the version of the package named before it, and `<seconds>` for the run time; everything else is as printed. The `Coverage JSON written` line names a report in a temporary directory that max-lint reads to find out whether anything was measured. Coverage writes its data file, `.coverage`, to the project directory.
+The output shows `<project>` for the project directory, `<tmp>` for a temporary directory, `<platform>` for the operating system, `<python>` for the Python version, `<python-build>` for the Python version with its release level, `<version>` for the version of the package named before it, and `<seconds>` for the run time. Coverage writes its data file, `.coverage`, to the project directory.
 
-`max-lint` with no command runs the lint steps, then the test step, and stops at the first step that fails; `max-lint --check` does the same with black and isort in their check modes. On the example project as it was for the passing test run, the lint tools print their results first, followed by the pytest output shown above:
+A bare `max-lint` on the example project as it was for the passing test run prints the lint tools' results first, followed by the pytest output shown above:
 
 ```console
 $ max-lint
@@ -201,7 +201,7 @@ The `[tool.max-lint]` table takes these keys and no others:
 | `exclude` | list of strings | no | Extra flake8-style exclude patterns such as `"src/inventory/generated"`, removed from black, isort and flake8 alike. |
 | `per-file-ignores` | table of glob to list of strings | no | Flake8 codes to ignore per file, such as `{ "src/inventory/legacy.py" = ["D103"] }`; a glob matches a file's path relative to `pyproject.toml`, and `*` also matches `/`. |
 
-Every path in `paths` and `test-paths` must exist; paths are relative to `pyproject.toml` and may point outside its directory. Ignored codes add up per file: every `__init__.py` ignores `D104` and `F401`, every file under a test path ignores `DOC`, and every `per-file-ignores` entry whose glob matches adds its codes.
+Every path in `paths` and `test-paths` must exist; paths are relative to `pyproject.toml` and may point outside its directory. Ignored codes add up per file: the `DOC` exemption of test paths, `D104` and `F401` for every `__init__.py`, and the codes of every `per-file-ignores` entry whose glob matches.
 
 ## Bundled style
 
@@ -238,7 +238,7 @@ A project that sets one of the three locked settings in `[tool.mypy]` or in an o
 - `max-lint test` runs pytest with coverage.
 - `max-lint --help` prints the available commands and `max-lint --version` the installed version.
 
-Every command stops at the first step that fails. The exit status is 0 when every step passes and 1 when a tool reports a failure. The step also exits 1 when coverage measures no file that contains a statement, even if every test passed. With `coverage-omit = ["src/inventory/stock.py"]` added to the example's `[tool.max-lint]`, the only file left in the measurement is the docstring-only `__init__.py`. The output is the same as in the passing run except that the `stock.py` row is gone, `TOTAL` counts no statements, and the last line is added:
+Every command stops at the first step that fails. The exit status is 0 when every step passes and 1 when a tool reports a failure. The test step also exits 1 when coverage measures no file that contains a statement, even if every test passed. With `coverage-omit = ["src/inventory/stock.py"]` added to the example's `[tool.max-lint]`, the only file left in the measurement is the docstring-only `__init__.py`. The output is the same as in the passing run except that the `stock.py` row is gone, `TOTAL` counts no statements, and the last line is added:
 
 ```console
 $ max-lint test
@@ -247,7 +247,7 @@ TOTAL                           0      0      0      0  100.00%
 max-lint: coverage measured no files that contain statements; check 'coverage-source' and 'coverage-omit' in [tool.max-lint].
 ```
 
-Exit status 2 and a one-line message on stderr mean a configuration error in `pyproject.toml` or its `[tool.max-lint]` table. The message says what to fix. This includes an empty `test-paths` or a missing `coverage-source` when the test step is going to run; a bare `max-lint` reports it before it rewrites any file.
+Exit status 2 and a one-line message on stderr mean a configuration error in `pyproject.toml` or its `[tool.max-lint]` table. The message says what to fix. A bare `max-lint` reports a configuration error of the test step before it rewrites any file. A usage error, such as an unknown command or option, also exits 2.
 
 ## Known limitations
 
@@ -261,7 +261,7 @@ Exit status 2 and a one-line message on stderr mean a configuration error in `py
 ## Contributing
 
 Setup, the checks a change must pass and the rules for the bundled style are in [CONTRIBUTING.md](CONTRIBUTING.md).
-Bugs and proposals go in [GitHub issues](https://github.com/ksco92/rattata/issues).
+max-lint is maintained by Rodrigo Carvajal; bugs and proposals go in [GitHub issues](https://github.com/ksco92/rattata/issues).
 
 ## License
 

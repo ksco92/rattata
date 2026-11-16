@@ -21,7 +21,7 @@ uv run max-lint
 uv run max-lint --check
 ```
 
-`uv run max-lint` formats the files with black and isort, runs flake8, mypy and the tests with branch coverage, and fails under 95% coverage. `uv run max-lint --check` rewrites nothing and is what CI runs on Python 3.13 and 3.14; use `uv run --python 3.13 max-lint --check` to run it on one version.
+What each command does is under [Commands and exit codes](README.md#commands-and-exit-codes) in the README. CI runs `uv run max-lint --check` on Python 3.13 and 3.14; use `uv run --python 3.13 max-lint --check` to run it on one version.
 
 ## Rules
 
