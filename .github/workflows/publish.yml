@@ -37,17 +37,15 @@ jobs:
         run: |
           set -euo pipefail
           version=$(python3 -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::Version is not X.Y.Z"; exit 1; }
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          pypi_json=$(mktemp)
-          status=$(curl -s --max-time 30 -o "$pypi_json" -w '%{http_code}' "https://pypi.org/pypi/$PROJECT/json")
+          status=$(curl -s -o /dev/null -w '%{http_code}' "https://pypi.org/pypi/$PROJECT/$version/json")
           case "$status" in
-            404) published=false ;;
-            200) published=$(VERSION="$version" python3 -c 'import json, os, sys; print("true" if os.environ["VERSION"] in json.load(sys.stdin)["releases"] else "false")' < "$pypi_json") ;;
-            *) echo "::error::PyPI answered $status for $PROJECT"; exit 1 ;;
+            200) skip=true ;;
+            404) skip=false ;;
+            *) echo "::error::PyPI answered $status for $PROJECT $version"; exit 1 ;;
           esac
-          if [ "$published" = true ]; then skip=true; else skip=false; fi
           echo "skip=$skip" >> "$GITHUB_OUTPUT"
-          echo "$PROJECT $version published=$published"
 
   build:
     name: build
@@ -62,6 +60,8 @@ jobs:
         with:
           persist-credentials: false
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: false
       - run: uv run max-lint --check
       - run: uv build
       - name: check the wheel provides max-lint at the manifest version
@@ -85,6 +85,7 @@ jobs:
     if: github.ref == 'refs/heads/main' && needs.version_check.outputs.skip == 'false'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    environment: pypi
     permissions:
       id-token: write
     steps:
