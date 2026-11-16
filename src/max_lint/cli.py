@@ -3,6 +3,7 @@
 import argparse
 import subprocess
 import sys
+import tempfile
 from importlib.metadata import version
 from pathlib import Path
 
@@ -44,10 +45,11 @@ def main(argv: list[str] | None = None) -> int:
     if arguments.command is None:
         return 0
 
-    try:
-        commands = lint_commands(load_config(Path("pyproject.toml")), check=arguments.check)
-    except ConfigError as error:
-        print(f"max-lint: {error}", file=sys.stderr)
-        return 2
+    with tempfile.TemporaryDirectory() as scratch:
+        try:
+            commands = lint_commands(load_config(Path("pyproject.toml")), check=arguments.check, scratch=Path(scratch))
+        except ConfigError as error:
+            print(f"max-lint: {error}", file=sys.stderr)
+            return 2
 
-    return run_commands(commands)
+        return run_commands(commands)

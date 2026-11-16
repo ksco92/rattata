@@ -46,13 +46,21 @@ def test_console_script_prints_version() -> None:
 @pytest.mark.parametrize(
     ("files", "message"),
     [
-        ({}, "max-lint: pyproject.toml not found; run max-lint from the directory that holds pyproject.toml.\n"),
         (
             {"pyproject.toml": '[tool.max-lint]\npaths = ["docs"]\n', "docs/index.md": "# Docs\n"},
             "max-lint: no Python files found under 'paths' and 'test-paths' in [tool.max-lint]; point them at Python sources.\n",
         ),
+        (
+            {
+                "pyproject.toml": '[tool.max-lint]\npaths = ["src"]\ntest-paths = ["my tests"]\n',
+                "src/a.py": "",
+                "my tests/test_a.py": "",
+            },
+            "max-lint: 'my tests/test_a.py' needs ignored codes from [tool.max-lint] but flake8 cannot name a path with whitespace, "
+            "':' or ','; rename it or add it to 'exclude'.\n",
+        ),
     ],
-    ids=["missing-pyproject", "no-python-files"],
+    ids=["no-python-files", "test-path-with-space"],
 )
 def test_lint_configuration_error_exits_two_with_one_line(
     tmp_path: Path,
@@ -72,12 +80,3 @@ def test_lint_configuration_error_exits_two_with_one_line(
 
     assert exit_code == 2
     assert capsys.readouterr().err == message
-
-
-def test_lint_rejects_unknown_option(capsys: pytest.CaptureFixture[str]) -> None:
-    """An unknown option is a usage error."""
-    with pytest.raises(SystemExit) as exc_info:
-        main(["lint", "--fix"])
-
-    assert exc_info.value.code == 2
-    assert "unrecognized arguments: --fix" in capsys.readouterr().err

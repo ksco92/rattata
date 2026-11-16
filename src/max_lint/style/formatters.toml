@@ -1,6 +1,5 @@
 [tool.black]
 line-length = 130
-skip-string-normalization = false
 
 [tool.isort]
 profile = "black"

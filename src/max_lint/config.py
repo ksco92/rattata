@@ -1,5 +1,6 @@
 """Load the ``[tool.max-lint]`` table that declares what a project owns."""
 
+import re
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
@@ -8,6 +9,7 @@ from black.files import infer_target_version
 
 LIST_KEYS = ("paths", "test-paths", "exclude")
 KNOWN_KEYS = (*LIST_KEYS, "per-file-ignores")
+FLAKE8_CODE = re.compile(r"[A-Z]+[0-9]*")
 
 
 class ConfigError(Exception):
@@ -26,8 +28,17 @@ class Config:
 
 
 def _is_str_list(value: object) -> bool:
-    """Return whether ``value`` is a list of strings."""
-    return isinstance(value, list) and all(isinstance(item, str) for item in value)
+    """Return whether ``value`` is a list of non-empty strings."""
+    return isinstance(value, list) and all(isinstance(item, str) and item for item in value)
+
+
+def _table(document: dict[str, object], key: str) -> dict[str, object]:
+    table = document.get(key, {})
+
+    if not isinstance(table, dict):
+        raise ConfigError(f"'{key}' in pyproject.toml must be a table, for example [{key}].")
+
+    return table
 
 
 def load_config(pyproject: Path) -> Config:
@@ -46,7 +57,7 @@ def load_config(pyproject: Path) -> Config:
     except tomllib.TOMLDecodeError as error:
         raise ConfigError(f"{pyproject} is not valid TOML ({error}); fix the syntax.") from None
 
-    table = document.get("tool", {}).get("max-lint")
+    table = _table(document, "tool").get("max-lint")
 
     if not isinstance(table, dict):
         raise ConfigError(f'{pyproject} has no [tool.max-lint] table; add one with paths = ["src"].')
@@ -60,22 +71,27 @@ def load_config(pyproject: Path) -> Config:
 
     for key in LIST_KEYS:
         if not _is_str_list(table.get(key, [])):
-            raise ConfigError(f"'{key}' in [tool.max-lint] must be a list of strings.")
+            raise ConfigError(f"'{key}' in [tool.max-lint] must be a list of non-empty strings.")
 
     if not table["paths"]:
         raise ConfigError("'paths' in [tool.max-lint] is empty; list at least one source path.")
 
     per_file_ignores = table.get("per-file-ignores", {})
 
-    if not isinstance(per_file_ignores, dict) or not all(_is_str_list(codes) for codes in per_file_ignores.values()):
-        raise ConfigError("'per-file-ignores' in [tool.max-lint] must be a table of path glob to a list of flake8 codes.")
+    if not isinstance(per_file_ignores, dict) or not all(
+        glob and _is_str_list(codes) and all(FLAKE8_CODE.fullmatch(code) for code in codes)
+        for glob, codes in per_file_ignores.items()
+    ):
+        raise ConfigError(
+            "'per-file-ignores' in [tool.max-lint] must be a table of non-empty path glob to a list of flake8 codes such as \"D100\".",
+        )
 
     for key in ("paths", "test-paths"):
         for path in table.get(key, []):
             if not (pyproject.parent / path).exists():
                 raise ConfigError(f"'{key}' in [tool.max-lint] lists '{path}', which does not exist; fix or remove it.")
 
-    if not isinstance(document.get("project", {}).get("requires-python", ""), str):
+    if not isinstance(_table(document, "project").get("requires-python", ""), str):
         raise ConfigError("'requires-python' in [project] must be a string, for example \">=3.13\".")
 
     return Config(

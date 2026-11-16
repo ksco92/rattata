@@ -1,13 +1,13 @@
 """Tests for ``max-lint lint`` against the real black, isort and flake8."""
 
+import re
 from pathlib import Path
 
 import pytest
 
 from max_lint.cli import main
-from max_lint.config import Config
-from max_lint.lint import per_file_ignores
 
+PLAIN_PYPROJECT = '[tool.max-lint]\npaths = ["src"]\n'
 LONG_LINE = (
     'PARTS = [basename("/tmp/archive.tar.gz"), join("first", "second"), "a string literal which pads this line to 120 chars"]\n'
 )
@@ -15,11 +15,85 @@ UNDOCUMENTED_MODULE = f"from os.path import basename, join\n\n{LONG_LINE}"
 UNFORMATTED_MODULE = '"""Fixture module."""\nimport sys\nimport os\n\n' "VALUE = {'platform':sys.platform, 'sep':os.sep}\n"
 FORMATTED_MODULE = '"""Fixture module."""\n\nimport os\nimport sys\n\nVALUE = {"platform": sys.platform, "sep": os.sep}\n'
 UNDOCUMENTED_FUNCTION = '"""Fixture module."""\n\n\ndef add(first: int, second: int) -> int:\n    """\n    Add two numbers.\n\n    :param first: first addend.\n    """\n    return first + second\n'
+SHORT_DOCSTRING = '\n\ndef short(value: int) -> int:\n    """Return the value."""\n    return value\n'
 LONG_WITH = (
     '"""Fixture module."""\n\n'
     'with open("the_first_file_with_a_rather_long_name.txt") as first_handle, open("the_second_file_with_a_long_name.txt") as second_handle:\n'
     "    pass\n"
 )
+NUMBERS = (
+    "100000000, 100000001, 100000002, 100000003, 100000004, 100000005, 100000006, 100000007, 100000008, 100000009, 100000010"
+)
+FORMATTER_LIMITS = (
+    '"""Fixture module."""\n\n'
+    "from os.path import abspath, basename, commonpath, commonprefix, dirname, exists, getatime, getctime, isabs, isdir, isfile, islink\n"
+    "# fmt: off\n"
+    "from shutil import chown, copy, copy2, copyfile, copyfileobj, copymode, copystat, copytree, disk_usage, make_archive, rmtree, which\n"
+    "# fmt: on\n\n"
+    f"NUMBER = [{NUMBERS}]\nNUMBERS = [{NUMBERS}]\n"
+)
+FORMATTED_LIMITS = (
+    '"""Fixture module."""\n\n'
+    "from os.path import abspath, basename, commonpath, commonprefix, dirname, exists, getatime, getctime, isabs, isdir, isfile, islink\n\n"
+    "# fmt: off\nfrom shutil import (\n    chown,\n    copy,\n    copy2,\n    copyfile,\n    copyfileobj,\n    copymode,\n    copystat,\n"
+    "    copytree,\n    disk_usage,\n    make_archive,\n    rmtree,\n    which,\n)\n\n# fmt: on\n\n"
+    f"NUMBER = [{NUMBERS}]\nNUMBERS = [\n" + "".join(f"    {number},\n" for number in NUMBERS.split(", ")) + "]\n"
+)
+FLAKE8_STYLE = '''"""Fixture module."""
+
+from typing import Any, Self
+
+URL = "https://example.com/a/path/long/enough/that/black/cannot/split/it/and/the/line/goes/past/one/hundred/and/thirty/characters/by/far"
+TOTAL = (
+    1_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000
+    + 2_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000
+)
+
+
+def passthrough(value: int) -> Any:
+    """
+    Return the value unchanged.
+
+    :param value: the value.
+    :return: the same value.
+    """
+    return value
+
+
+def window(items: list[int], start: int) -> list[int]:
+    """
+    Return the slice after ``start``.
+
+    :param items: the items.
+    :param start: the first index.
+    :return: the slice.
+    """
+    return items[start + 1 : start + 3]
+
+
+def short(value: int) -> int:
+    """Return the value."""
+    return value
+
+
+def _private(value: int) -> int:
+    """Return the value."""
+    return value
+
+
+class Box:
+    """A box."""
+
+    size: int = 1
+
+    def __init__(self: Self, size: int) -> None:
+        """
+        Create the box.
+
+        :param size: the size.
+        """
+        self.size = size
+'''
 
 
 def write_files(root: Path, files: dict[str, str]) -> None:
@@ -39,21 +113,23 @@ def lint(root: Path, monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixtu
     return exit_code, (captured.out + captured.err).replace(str(Path.cwd()), "<root>")
 
 
-# Bundled style lock tests
+def flake8_codes(output: str) -> list[str]:
+    """Return each flake8 violation in ``output`` as ``path:row:col: CODE``."""
+    return re.findall(r"^(\S+\.py:\d+:\d+: [A-Z]+[0-9]+)", output, flags=re.MULTILINE)
+
+
 def test_bundled_style_accepts_long_line_and_reports_missing_module_docstring(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
 ) -> None:
-    """The fixture line is 120 characters: over the 80 of the override fixtures, under the bundled 130."""
-    assert len(LONG_LINE.rstrip("\n")) == 120
-    write_files(tmp_path, {"pyproject.toml": '[tool.max-lint]\npaths = ["src"]\n', "src/mod.py": UNDOCUMENTED_MODULE})
+    """A 120-character line is left alone and a missing module docstring is reported."""
+    write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT, "src/mod.py": UNDOCUMENTED_MODULE})
 
     exit_code, output = lint(tmp_path, monkeypatch, capfd)
 
     assert exit_code == 1
-    assert "src/mod.py:1:1: D100 Missing docstring in public module" in output
-    assert "E501" not in output
+    assert flake8_codes(output) == ["src/mod.py:1:1: D100"]
     assert (tmp_path / "src/mod.py").read_text() == UNDOCUMENTED_MODULE
 
 
@@ -76,8 +152,8 @@ def test_project_tool_settings_do_not_change_the_result(
     capfd: pytest.CaptureFixture[str],
     overrides: dict[str, str],
 ) -> None:
-    """flake8 reads only the first of setup.cfg, tox.ini and .flake8, so each file is its own case."""
-    files = {"pyproject.toml": '[tool.max-lint]\npaths = ["src"]\n', "src/mod.py": UNDOCUMENTED_MODULE}
+    """Tool settings in the project leave output, exit code and files as they are without them."""
+    files = {"pyproject.toml": PLAIN_PYPROJECT, "src/mod.py": UNDOCUMENTED_MODULE}
     write_files(tmp_path / "plain", files)
     write_files(tmp_path / "overridden", files)
 
@@ -92,73 +168,105 @@ def test_project_tool_settings_do_not_change_the_result(
     assert (tmp_path / "overridden/src/mod.py").read_text() == (tmp_path / "plain/src/mod.py").read_text() == UNDOCUMENTED_MODULE
 
 
-def test_lint_separates_first_party_imports(
+def test_bundled_formatter_line_lengths_and_isort_profile(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
 ) -> None:
-    """``app`` is first party because it is a package under ``src``."""
+    """Lines of 130 characters stay and lines of 131 are wrapped, by black and by isort's black profile alike."""
+    write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT, "src/mod.py": FORMATTER_LIMITS})
+
+    lint(tmp_path, monkeypatch, capfd)
+
+    assert (tmp_path / "src/mod.py").read_text() == FORMATTED_LIMITS
+
+
+def test_bundled_flake8_and_pydoclint_options(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    """Only ANN401 and the short docstring's missing sections are reported."""
+    write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT, "src/mod.py": FLAKE8_STYLE})
+
+    exit_code, output = lint(tmp_path, monkeypatch, capfd, "--check")
+
+    assert exit_code == 1
+    assert flake8_codes(output) == [
+        "src/mod.py:12:35: ANN401",
+        "src/mod.py:33:1: DOC101",
+        "src/mod.py:33:1: DOC103",
+        "src/mod.py:33:1: DOC201",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("paths", "package"),
+    [("src", "src/app"), ("app", "app")],
+    ids=["src-layout", "flat-layout"],
+)
+def test_lint_separates_first_party_imports(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+    paths: str,
+    package: str,
+) -> None:
+    """The project's own package sorts after third-party imports."""
     module = '"""Fixture module."""\n\nimport os\nfrom app import helpers\nimport black\n\nVALUE = (os, helpers, black)\n'
     write_files(
         tmp_path,
-        {"pyproject.toml": '[tool.max-lint]\npaths = ["src"]\n', "src/app/__init__.py": "", "src/app/main.py": module},
+        {"pyproject.toml": f'[tool.max-lint]\npaths = ["{paths}"]\n', f"{package}/__init__.py": "", f"{package}/main.py": module},
     )
 
     exit_code, _ = lint(tmp_path, monkeypatch, capfd)
 
     assert exit_code == 0
-    assert (tmp_path / "src/app/main.py").read_text() == (
+    assert (tmp_path / package / "main.py").read_text() == (
         '"""Fixture module."""\n\nimport os\n\nimport black\n\nfrom app import helpers\n\nVALUE = (os, helpers, black)\n'
     )
 
 
 @pytest.mark.parametrize(
-    ("project_table", "expected_with"),
+    ("requires_python", "expected_with"),
     [
         (
-            "",
+            ">=3.8",
             'with open("the_first_file_with_a_rather_long_name.txt") as first_handle, open(\n'
             '    "the_second_file_with_a_long_name.txt"\n'
             ") as second_handle:\n",
         ),
         (
-            '[project]\nrequires-python = ">=3.8"\n',
-            'with open("the_first_file_with_a_rather_long_name.txt") as first_handle, open(\n'
-            '    "the_second_file_with_a_long_name.txt"\n'
-            ") as second_handle:\n",
-        ),
-        (
-            '[project]\nrequires-python = ">=3.9"\n',
+            ">=3.9",
             "with (\n"
             '    open("the_first_file_with_a_rather_long_name.txt") as first_handle,\n'
             '    open("the_second_file_with_a_long_name.txt") as second_handle,\n'
             "):\n",
         ),
     ],
-    ids=["no-requires-python", "lower-bound-3.8", "lower-bound-3.9"],
 )
 def test_black_target_follows_requires_python(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
-    project_table: str,
+    requires_python: str,
     expected_with: str,
 ) -> None:
-    """Parenthesized context managers need Python 3.9, so the lower bound decides how black splits the line."""
-    write_files(tmp_path, {"pyproject.toml": f'{project_table}[tool.max-lint]\npaths = ["src"]\n', "src/mod.py": LONG_WITH})
+    """Parenthesized context managers are used only from a Python 3.9 lower bound."""
+    pyproject = f'[project]\nrequires-python = "{requires_python}"\n\n{PLAIN_PYPROJECT}'
+    write_files(tmp_path, {"pyproject.toml": pyproject, "src/mod.py": LONG_WITH})
 
     lint(tmp_path, monkeypatch, capfd)
 
     assert (tmp_path / "src/mod.py").read_text() == f'"""Fixture module."""\n\n{expected_with}    pass\n'
 
 
-# Docstring rule tests
 def test_doc_codes_apply_to_paths_but_not_test_paths(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
 ) -> None:
-    """The same undocumented function sits in a source path and a nested test path."""
+    """A function missing ``:param:`` lines reports DOC codes only outside the test paths."""
     write_files(
         tmp_path,
         {
@@ -169,22 +277,24 @@ def test_doc_codes_apply_to_paths_but_not_test_paths(
     )
 
     exit_code, output = lint(tmp_path, monkeypatch, capfd, "--check")
-    doc_files = {line.split(":")[0] for line in output.splitlines() if ": DOC" in line}
 
     assert exit_code == 1
-    assert doc_files == {"lib/mod.py"}
-    assert "checks/nested/test_mod.py:3:1: F401 'os' imported but unused" in output
+    assert flake8_codes(output) == [
+        "checks/nested/test_mod.py:3:1: F401",
+        "lib/mod.py:4:1: DOC101",
+        "lib/mod.py:4:1: DOC103",
+        "lib/mod.py:4:1: DOC201",
+    ]
 
 
-# Check and write mode tests
 def test_check_mode_reports_unformatted_file_without_writing(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
 ) -> None:
-    """The fixture also has unsorted imports and an unused import, which isort and flake8 would report."""
+    """Check mode stops at black's failure and leaves the file byte-identical."""
     original = f"import json\n{UNFORMATTED_MODULE}".encode()
-    write_files(tmp_path, {"pyproject.toml": '[tool.max-lint]\npaths = ["src"]\n'})
+    write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT})
     (tmp_path / "src").mkdir()
     (tmp_path / "src/mod.py").write_bytes(original)
 
@@ -193,7 +303,7 @@ def test_check_mode_reports_unformatted_file_without_writing(
     assert exit_code == 1
     assert "would reformat src/mod.py" in output
     assert "Imports are incorrectly sorted" not in output
-    assert "F401" not in output
+    assert flake8_codes(output) == []
     assert (tmp_path / "src/mod.py").read_bytes() == original
 
 
@@ -202,9 +312,9 @@ def test_check_mode_reports_unsorted_imports_without_writing(
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
 ) -> None:
-    """The file is black-clean, sits in a directory isort skips by default, and has an unused import for flake8."""
+    """Check mode stops at isort's failure, also inside a ``build`` directory, and leaves the file byte-identical."""
     original = b'"""Fixture module."""\n\nimport sys\nimport os\nimport json\n\nVALUE = (os.sep, sys.platform)\n'
-    write_files(tmp_path, {"pyproject.toml": '[tool.max-lint]\npaths = ["src"]\n'})
+    write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT})
     (tmp_path / "src/build").mkdir(parents=True)
     (tmp_path / "src/build/mod.py").write_bytes(original)
 
@@ -213,7 +323,7 @@ def test_check_mode_reports_unsorted_imports_without_writing(
     assert exit_code == 1
     assert "1 file would be left unchanged." in output
     assert "ERROR: <root>/src/build/mod.py Imports are incorrectly sorted and/or formatted." in output
-    assert "F401" not in output
+    assert flake8_codes(output) == []
     assert (tmp_path / "src/build/mod.py").read_bytes() == original
 
 
@@ -229,9 +339,9 @@ def test_write_mode_rewrites_file_and_exits_with_flake8_result(
     extra_import: str,
     expected_exit: int,
 ) -> None:
-    """Run the write mode on a file that black and isort both change."""
+    """Write mode applies black and isort, then exits with flake8's result."""
     module = UNFORMATTED_MODULE.replace("import sys\n", f"import sys\n{extra_import}")
-    write_files(tmp_path, {"pyproject.toml": '[tool.max-lint]\npaths = ["src"]\n', "src/mod.py": module})
+    write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT, "src/mod.py": module})
 
     exit_code, _ = lint(tmp_path, monkeypatch, capfd)
 
@@ -239,18 +349,54 @@ def test_write_mode_rewrites_file_and_exits_with_flake8_result(
     assert (tmp_path / "src/mod.py").read_text() == FORMATTED_MODULE.replace("import os\n", f"{extra_import}import os\n")
 
 
-# Project table tests
+def test_ignored_codes_add_up_per_file_and_match_exactly(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    """Each file ignores the union of the codes whose source matches it, and no other codes."""
+    lambda_module = "import os\n\nSQUARE = lambda value: value * value\n"
+    write_files(
+        tmp_path,
+        {
+            "pyproject.toml": (
+                '[tool.max-lint]\npaths = ["src"]\ntest-paths = ["tests", "test_main.py"]\n\n[tool.max-lint.per-file-ignores]\n'
+                '"tests/__init__.py" = ["E731"]\n"./tests/test_a.py" = ["F401"]\n"src/pkg/__*" = ["E731"]\n'
+                '"src/x y.py" = ["D100"]\n"other/y.py" = ["D100"]\n"src/m[[]1].py" = ["D100"]\n'
+            ),
+            "tests/__init__.py": lambda_module + SHORT_DOCSTRING,
+            "tests/test_a.py": '"""Fixture module."""\n\nimport os\n' + SHORT_DOCSTRING,
+            "test_main.py": '"""Fixture module."""\n' + SHORT_DOCSTRING,
+            "src/pkg/__init__.py": lambda_module,
+            "src/pkg/test_main.py": '"""Fixture module."""\n' + SHORT_DOCSTRING,
+            "src/other/y.py": "VALUE = 1\n",
+            "src/m[1].py": "VALUE = 1\n",
+            "src/m1.py": "VALUE = 1\n",
+        },
+    )
+
+    exit_code, output = lint(tmp_path, monkeypatch, capfd, "--check")
+
+    assert exit_code == 1
+    assert flake8_codes(output) == [
+        "src/m1.py:1:1: D100",
+        "src/other/y.py:1:1: D100",
+        "src/pkg/test_main.py:4:1: DOC101",
+        "src/pkg/test_main.py:4:1: DOC103",
+        "src/pkg/test_main.py:4:1: DOC201",
+    ]
+
+
 def test_per_file_ignores_apply_only_to_matching_files(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
 ) -> None:
-    """The ``__init__.py`` keeps the bundled D104 and F401 exemption next to the project entry."""
+    """An entry suppresses its code in the files its glob matches and nowhere else."""
     write_files(
         tmp_path,
         {
             "pyproject.toml": '[tool.max-lint]\npaths = ["app"]\nper-file-ignores = { "app/legacy_*.py" = ["D100"] }\n',
-            "app/__init__.py": "import os\n",
             "app/legacy_one.py": "VALUE = 1\n",
             "app/current.py": "VALUE = 1\n",
         },
@@ -259,9 +405,7 @@ def test_per_file_ignores_apply_only_to_matching_files(
     exit_code, output = lint(tmp_path, monkeypatch, capfd, "--check")
 
     assert exit_code == 1
-    assert [line for line in output.splitlines() if line.startswith("app/")] == [
-        "app/current.py:1:1: D100 Missing docstring in public module",
-    ]
+    assert flake8_codes(output) == ["app/current.py:1:1: D100"]
 
 
 def test_exclude_removes_file_from_every_tool(
@@ -269,7 +413,7 @@ def test_exclude_removes_file_from_every_tool(
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
 ) -> None:
-    """The excluded file breaks black, isort and flake8 alike."""
+    """Excluded files and the bundled ``.venv`` exclude are neither rewritten nor reported."""
     broken = f"import json\n{UNFORMATTED_MODULE}"
     write_files(
         tmp_path,
@@ -288,15 +432,37 @@ def test_exclude_removes_file_from_every_tool(
     assert (tmp_path / "app/.venv/lib/site.py").read_text() == broken
 
 
+def test_file_reached_through_two_spellings_is_linted_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    """A file under both ``src`` and ``./src/other`` is checked once."""
+    write_files(
+        tmp_path,
+        {"pyproject.toml": '[tool.max-lint]\npaths = ["src", "./src/other"]\n', "src/other/mod.py": "VALUE = 1\n"},
+    )
+
+    exit_code, output = lint(tmp_path, monkeypatch, capfd, "--check")
+
+    assert exit_code == 1
+    assert "1 file would be left unchanged." in output
+    assert flake8_codes(output) == ["src/other/mod.py:1:1: D100"]
+
+
 def test_path_outside_project_is_linted(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
 ) -> None:
-    """``PATH`` holds no tools, so each one must come from max-lint's own interpreter."""
+    """Files outside the project are rewritten and keep the ``__init__.py`` ignores, with no tools on ``PATH``."""
     write_files(
         tmp_path,
-        {"project/pyproject.toml": '[tool.max-lint]\npaths = ["../shared/etl"]\n', "shared/etl/job.py": UNFORMATTED_MODULE},
+        {
+            "project/pyproject.toml": '[tool.max-lint]\npaths = ["../shared/etl"]\n',
+            "shared/etl/__init__.py": "import os\n",
+            "shared/etl/job.py": UNFORMATTED_MODULE,
+        },
     )
     monkeypatch.setenv("PATH", str(tmp_path / "no-tools"))
 
@@ -307,22 +473,24 @@ def test_path_outside_project_is_linted(
     assert (tmp_path / "shared/etl/job.py").read_text() == FORMATTED_MODULE
 
 
-# Per-file ignore composition tests
-def test_per_file_ignores_exempts_test_directories_and_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """A test path written with a trailing slash still yields a directory pattern."""
-    write_files(tmp_path, {"suite/test_a.py": "", "test_b.py": ""})
-    monkeypatch.chdir(tmp_path)
-    config = Config(
-        paths=["src"],
-        test_paths=["suite/", "test_b.py"],
-        exclude=[],
-        per_file_ignores={"src/old.py": ["D100", "E731"]},
-        black_target_versions=[],
+@pytest.mark.parametrize("planted", ["black.py", "click.py", "isort/__init__.py", "flake8/__init__.py"])
+def test_project_modules_named_like_tools_are_not_imported(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+    planted: str,
+) -> None:
+    """A module at the project root named like a tool or a dependency never runs."""
+    marker = tmp_path / "imported"
+    write_files(
+        tmp_path,
+        {"pyproject.toml": PLAIN_PYPROJECT, "src/mod.py": UNFORMATTED_MODULE, planted: f"open({str(marker)!r}, 'w').close()\n"},
     )
 
-    assert per_file_ignores(config).splitlines() == [
-        "*/__init__.py: D104, F401",
-        "suite/*: DOC",
-        "test_b.py: DOC",
-        "src/old.py: D100, E731",
-    ]
+    check = lint(tmp_path, monkeypatch, capfd, "--check")
+    write = lint(tmp_path, monkeypatch, capfd)
+
+    assert (check[0], write[0]) == (1, 0)
+    assert "would reformat src/mod.py" in check[1]
+    assert (tmp_path / "src/mod.py").read_text() == FORMATTED_MODULE
+    assert not marker.exists()

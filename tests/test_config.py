@@ -72,10 +72,10 @@ def test_load_config_without_pyproject_names_the_file(tmp_path: Path) -> None:
         ('[tool]\nmax-lint = ["src"]\n', r"no \[tool.max-lint\] table"),
         ('[tool.max-lint]\npaths = ["src"]\ncoverage-source = ["src"]\n', "unknown key 'coverage-source'"),
         ('[tool.max-lint]\ntest-paths = ["tests"]\n', "missing 'paths'"),
-        ('[tool.max-lint]\npaths = "src"\n', "'paths' in .* must be a list of strings"),
+        ('[tool.max-lint]\npaths = "src"\n', "'paths' in .* must be a list of non-empty strings"),
         ("[tool.max-lint]\npaths = []\n", "'paths' in .* is empty"),
-        ('[tool.max-lint]\npaths = ["src"]\ntest-paths = "tests"\n', "'test-paths' in .* must be a list of strings"),
-        ('[tool.max-lint]\npaths = ["src"]\nexclude = ["build", 1]\n', "'exclude' in .* must be a list of strings"),
+        ('[tool.max-lint]\npaths = ["src"]\ntest-paths = "tests"\n', "'test-paths' in .* must be a list of non-empty strings"),
+        ('[tool.max-lint]\npaths = ["src"]\nexclude = ["build", 1]\n', "'exclude' in .* must be a list of non-empty strings"),
         ('[tool.max-lint]\npaths = ["src"]\nper-file-ignores = ["D100"]\n', "'per-file-ignores' in .* must be a table"),
         (
             '[tool.max-lint]\npaths = ["src"]\nper-file-ignores = { "a.py" = "D100" }\n',
@@ -84,6 +84,14 @@ def test_load_config_without_pyproject_names_the_file(tmp_path: Path) -> None:
         ('[tool.max-lint]\npaths = ["src", "lib"]\n', "'paths' in .* lists 'lib', which does not exist"),
         ('[tool.max-lint]\npaths = ["src"]\ntest-paths = ["test"]\n', "'test-paths' in .* lists 'test', which does not exist"),
         ('[project]\nrequires-python = 3.13\n\n[tool.max-lint]\npaths = ["src"]\n', "'requires-python' in .* must be a string"),
+        ('tool = "x"\n', "'tool' in pyproject.toml must be a table"),
+        ('project = "x"\n\n[tool.max-lint]\npaths = ["src"]\n', "'project' in pyproject.toml must be a table"),
+        ('[tool.max-lint]\npaths = [""]\n', "'paths' in .* must be a list of non-empty strings"),
+        ('[tool.max-lint]\npaths = ["src"]\nper-file-ignores = { "" = ["D100"] }\n', "'per-file-ignores' in .* must be a table"),
+        (
+            '[tool.max-lint]\npaths = ["src"]\nper-file-ignores = { "src/a.py" = ["D100: x"] }\n',
+            "'per-file-ignores' in .* must be a table",
+        ),
     ],
 )
 def test_load_config_rejects_invalid_settings(tmp_path: Path, text: str, message: str) -> None:
