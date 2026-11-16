@@ -10,6 +10,15 @@ from black.files import infer_target_version
 LIST_KEYS = ("paths", "test-paths", "exclude")
 KNOWN_KEYS = (*LIST_KEYS, "per-file-ignores")
 FLAKE8_CODE = re.compile(r"[A-Z]+[0-9]*")
+LOCKED_MYPY_KEYS = (
+    "disallow_untyped_defs",
+    "allow_untyped_defs",
+    "no_disallow_untyped_defs",
+    "warn_redundant_casts",
+    "no_warn_redundant_casts",
+    "no_implicit_optional",
+    "implicit_optional",
+)
 
 
 class ConfigError(Exception):
@@ -39,6 +48,32 @@ def _table(document: dict[str, object], key: str) -> dict[str, object]:
         raise ConfigError(f"'{key}' in pyproject.toml must be a table, for example [{key}].")
 
     return table
+
+
+def _reject_locked_mypy_keys(document: dict[str, object]) -> None:
+    """
+    Reject a ``[tool.mypy]`` table or ``[[tool.mypy.overrides]]`` entry that sets a key max-lint fixes, in any spelling mypy accepts.
+
+    :param document: the parsed ``pyproject.toml``.
+    :raises ConfigError: when the mypy tables are malformed or set a locked key.
+    """
+    mypy = _table(document, "tool").get("mypy", {})
+    overrides = mypy.get("overrides", []) if isinstance(mypy, dict) else None
+
+    if not isinstance(overrides, list) or not all(isinstance(entry, dict) for entry in overrides):
+        raise ConfigError(
+            "'mypy' in [tool] must be a table and its 'overrides' a list of tables; write [tool.mypy] and [[tool.mypy.overrides]].",
+        )
+
+    places = [
+        ("[tool.mypy]", mypy),
+        *((f"[[tool.mypy.overrides]] for module {entry.get('module')!r}", entry) for entry in overrides),
+    ]
+
+    for place, settings in places:
+        for key in settings:
+            if key in LOCKED_MYPY_KEYS:
+                raise ConfigError(f"{key!r} is set in {place}, but max-lint fixes it; remove it.")
 
 
 def load_config(pyproject: Path) -> Config:
@@ -103,6 +138,8 @@ def load_config(pyproject: Path) -> Config:
 
     if not isinstance(_table(document, "project").get("requires-python", ""), str):
         raise ConfigError("'requires-python' in [project] must be a string, for example \">=3.13\".")
+
+    _reject_locked_mypy_keys(document)
 
     return Config(
         paths=table["paths"],
