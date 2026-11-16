@@ -11,9 +11,17 @@ import pytest
 from max_lint.cli import main
 
 
-def test_main_without_arguments_returns_zero() -> None:
-    """Running with no arguments succeeds."""
-    assert main([]) == 0
+def test_main_without_arguments_needs_a_max_lint_table(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Running with no arguments runs the lint and test steps, which need ``[tool.max-lint]``."""
+    (tmp_path / "pyproject.toml").write_text("")
+    monkeypatch.chdir(tmp_path)
+
+    assert main([]) == 2
+    assert "no [tool.max-lint] table" in capsys.readouterr().err
 
 
 def test_version_flag_prints_installed_version(capsys: pytest.CaptureFixture[str]) -> None:
