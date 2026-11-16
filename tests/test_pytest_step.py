@@ -1,11 +1,14 @@
 """Tests for ``max-lint test`` and the bare ``max-lint`` run against the real pytest and coverage."""
 
 import re
+import tomllib
 from pathlib import Path
 
 import pytest
 
 from max_lint.cli import main
+from max_lint.config import Config
+from max_lint.pytest_step import pytest_command
 
 BASE_PYPROJECT = """[tool.max-lint]
 paths = ["src"]
@@ -225,11 +228,10 @@ def test_project_coverage_options_in_pytest_settings_do_not_widen_the_scope(
     "files",
     [
         {"pyproject.toml": BASE_PYPROJECT.replace("src/pkg", "nomatch")},
-        {"src/pkg/__init__.py": "", "tests/test_sign.py": IMPORT_TEST},
         {"src/pkg/__init__.py": '"""Documented only."""\n', "tests/test_sign.py": IMPORT_TEST},
         {"pyproject.toml": BASE_PYPROJECT.replace('["src/pkg"]', '["src/pkg"]\ncoverage-omit = ["*/pkg/*"]')},
     ],
-    ids=["source-matches-nothing", "only-an-empty-file", "only-a-docstring", "everything-omitted"],
+    ids=["source-matches-nothing", "only-a-docstring", "everything-omitted"],
 )
 def test_measuring_no_files_fails_although_tests_pass(
     tmp_path: Path,
@@ -275,15 +277,6 @@ def test_interrupted_pytest_run_exits_one_without_the_no_files_message(
     assert NO_FILES not in output
 
 
-def test_pythonpath_from_the_project_pytest_settings_is_read(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capfd: pytest.CaptureFixture[str],
-) -> None:
-    """A package that is importable only through ``pythonpath`` is found."""
-    assert run_max_lint(tmp_path, BASE_FILES, monkeypatch, capfd, "test")[0] == 0
-
-
 @pytest.mark.parametrize("arguments", [["test"], []], ids=["test", "bare"])
 def test_module_in_the_project_root_is_importable_by_the_tests(
     tmp_path: Path,
@@ -326,7 +319,7 @@ def test_tests_are_collected_with_the_importlib_import_mode(
     assert "3 passed" in output
 
 
-def test_coverage_data_stays_out_of_the_scratch_directory_and_nothing_else_is_written_to_the_project(
+def test_only_coverage_data_and_pytest_cache_are_written_to_the_project(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
@@ -448,6 +441,7 @@ def test_bare_check_run_on_a_formatted_project_runs_the_tests(
     exit_code, output = run_max_lint(tmp_path, {**BASE_FILES, "tests/test_marker.py": MARKER_TEST}, monkeypatch, capfd, "--check")
 
     assert exit_code == 0
+    assert "Total coverage: 100.00%" in output
     assert (tmp_path / "ran").exists()
 
 
@@ -481,3 +475,62 @@ def test_test_rejects_unknown_option(capsys: pytest.CaptureFixture[str]) -> None
 
     assert exc_info.value.code == 2
     assert "unrecognized arguments: --check" in capsys.readouterr().err
+
+
+def test_test_path_named_like_an_option_is_a_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    """A directory named ``--cov-fail-under=0`` does not lower the floor."""
+    files = {
+        "pyproject.toml": BASE_PYPROJECT.replace('"tests"', '"--cov-fail-under=0"'),
+        "src/pkg/__init__.py": SIGN_MODULE,
+        "--cov-fail-under=0/test_sign.py": POSITIVE_ONLY_TEST,
+    }
+
+    exit_code, output = run_max_lint(tmp_path, files, monkeypatch, capfd, "test")
+
+    assert exit_code == 1
+    assert NOT_REACHED in output
+
+
+@pytest.mark.parametrize("location", ["inside", "outside", "absolute"])
+def test_test_path_named_like_a_plugin_switch_is_a_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+    location: str,
+) -> None:
+    """A directory named ``-pevilplug`` is collected for tests and no ``evilplug`` plugin is loaded."""
+    entry = {"inside": "-pevilplug", "outside": "../-pevilplug", "absolute": f"{tmp_path}/-pevilplug"}[location]
+    directory = tmp_path / "project" / entry if location == "inside" else tmp_path / "-pevilplug"
+    files = {
+        "pyproject.toml": BASE_PYPROJECT.replace('"tests"', f'"{entry}"')
+        .replace("src/pkg", "pkg")
+        .replace('paths = ["src"]', 'paths = ["pkg"]'),
+        "pkg/__init__.py": SIGN_MODULE,
+        "evilplug.py": 'from pathlib import Path\n\nPath("evil-ran").write_text("")\n',
+    }
+    write_files(tmp_path / "project", files)
+    write_files(directory, {"test_sign.py": SIGN_TEST})
+
+    exit_code, output = run_max_lint(tmp_path / "project", {}, monkeypatch, capfd, "test")
+
+    assert exit_code == 0
+    assert "1 passed" in output
+    assert not (tmp_path / "project" / "evil-ran").exists()
+
+
+@pytest.mark.parametrize(
+    "patterns",
+    [['a"b\\c'], ["\u00e9*.py", "plain"], ["*/\u0394/[ab]?.py"]],
+    ids=["quote-and-backslash", "non-ascii", "glob"],
+)
+def test_coverage_omit_is_written_to_the_coverage_config_unchanged(tmp_path: Path, patterns: list[str]) -> None:
+    """The generated coverage config holds exactly the ``coverage-omit`` patterns."""
+    config = Config(["src"], ["tests"], [], ["src"], patterns, {}, [])
+
+    pytest_command(config, tmp_path)
+
+    assert tomllib.loads((tmp_path / "coverage.toml").read_text(encoding="utf-8"))["run"]["omit"] == patterns

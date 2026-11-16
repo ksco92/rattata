@@ -10,6 +10,7 @@ from black.files import infer_target_version
 LIST_KEYS = ("paths", "test-paths", "exclude", "coverage-source", "coverage-omit")
 KNOWN_KEYS = (*LIST_KEYS, "per-file-ignores")
 FLAKE8_CODE = re.compile(r"[A-Z]+[0-9]*")
+CONTROL_CHARACTER = re.compile(r"[\x00-\x1f\x7f]")
 LOCKED_MYPY_KEYS = (
     "disallow_untyped_defs",
     "allow_untyped_defs",
@@ -78,6 +79,20 @@ def _reject_locked_mypy_keys(document: dict[str, object]) -> None:
                 raise ConfigError(f"{key!r} is set in {place}, but max-lint fixes it; remove it.")
 
 
+def _reject_control_characters(patterns: list[str]) -> None:
+    """
+    Reject ``coverage-omit`` values that cannot be written to the generated coverage config.
+
+    :param patterns: the validated ``coverage-omit`` list.
+    :raises ConfigError: when a pattern contains a control character.
+    """
+    for pattern in patterns:
+        if CONTROL_CHARACTER.search(pattern):
+            raise ConfigError(
+                f"'coverage-omit' in [tool.max-lint] has the pattern {pattern!r}, which contains a control character; remove it.",
+            )
+
+
 def load_config(pyproject: Path) -> Config:
     """
     Read and validate the ``[tool.max-lint]`` table of a ``pyproject.toml``.
@@ -112,6 +127,8 @@ def load_config(pyproject: Path) -> Config:
     for key in LIST_KEYS:
         if not _is_str_list(table.get(key, [])):
             raise ConfigError(f"'{key}' in [tool.max-lint] must be a list of non-empty strings.")
+
+    _reject_control_characters(table.get("coverage-omit", []))
 
     if not table["paths"]:
         raise ConfigError("'paths' in [tool.max-lint] is empty; list at least one source path.")

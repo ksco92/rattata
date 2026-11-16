@@ -1,6 +1,7 @@
 """Build and run the pytest command with branch coverage and a coverage floor the project cannot lower."""
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -52,8 +53,7 @@ def pytest_command(config: Config, scratch: Path) -> list[str]:
         f"--cov-report=json:{scratch / REPORT_NAME}",
         f"--cov-fail-under={FAIL_UNDER}",
         "--cov-precision=2",
-        "--",
-        *config.test_paths,
+        *(path if os.path.isabs(path) else f"./{path}" for path in config.test_paths),
     ]
 
 

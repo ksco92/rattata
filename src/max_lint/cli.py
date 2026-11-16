@@ -10,7 +10,7 @@ from pathlib import Path
 
 from max_lint.config import ConfigError, load_config
 from max_lint.lint import TOOL_ENVIRONMENT, lint_commands
-from max_lint.pytest_step import pytest_command, run_tests
+from max_lint.pytest_step import FAIL_UNDER, pytest_command, run_tests
 
 
 def run_commands(commands: list[list[str]]) -> int:
@@ -48,7 +48,7 @@ def main(argv: list[str] | None = None) -> int:
         default=argparse.SUPPRESS,
         help="check formatting with black and isort without rewriting files",
     )
-    subcommands.add_parser("test", help="run pytest with branch coverage and a 95%% floor")
+    subcommands.add_parser("test", help=f"run pytest with branch coverage and a {FAIL_UNDER}%% floor")
     arguments = parser.parse_args(argv)
 
     with tempfile.TemporaryDirectory() as scratch_directory:

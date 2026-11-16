@@ -166,16 +166,16 @@ The exit status is 0 when every step passes and 1 when a tool reports a failure.
 ```console
 $ max-lint test
 ============================= test session starts ==============================
-platform <platform> -- Python <python>, pytest-9.2.0, pluggy-1.7.0
+platform <platform> -- Python <python>, pytest-9.2.0, pluggy-<version>
 rootdir: <project>
 configfile: pyproject.toml
-plugins: platformdirs-4.14.5, cov-7.1.0, socket-0.8.1
+plugins: platformdirs-<version>, cov-7.1.0, socket-0.8.1
 collected 1 item
 
 tests/test_stock.py .                                                    [100%]
 
 ================================ tests coverage ================================
-_______________ coverage: platform <platform>, python <python> _______________
+_______________ coverage: platform <platform>, python <python-build> _______________
 
 Name                        Stmts   Miss Branch BrPart    Cover   Missing
 -------------------------------------------------------------------------
@@ -188,65 +188,26 @@ Required test coverage of 95% reached. Total coverage: 100.00%
 ============================== 1 passed in <seconds>s ===============================
 ```
 
-The output shows `<project>` for the project directory, `<tmp>` for a temporary directory, `<platform>` and `<python>` for the operating system and Python version, and `<seconds>` for the run time; everything else is as printed. The `Coverage JSON written` line names a report in a temporary directory that max-lint reads to find out whether anything was measured. Coverage writes its data file, `.coverage`, to the project directory.
+The output shows `<project>` for the project directory, `<tmp>` for a temporary directory, `<platform>` for the operating system, `<python>` for the Python version, `<python-build>` for the Python version with its release level, `<version>` for the versions of `pluggy` and `platformdirs`, and `<seconds>` for the run time; everything else is as printed. The `Coverage JSON written` line names a report in a temporary directory that max-lint reads to find out whether anything was measured. Coverage writes its data file, `.coverage`, to the project directory.
 
 The coverage settings are fixed: branch coverage on, a floor of 95% compared to two decimals, the missing lines shown, and `pragma: no cover` and `if __name__ == .__main__.:` as the excluded lines. `[tool.coverage.*]`, `.coveragerc`, `.coveragerc.toml` and the coverage sections of `setup.cfg` and `tox.ini` have no effect. The project's `[tool.pytest.ini_options]` is still read, so keys such as `pythonpath` work; pytest runs with `--import-mode=importlib`.
 
-When coverage measures no file that contains a statement, the step exits 1 even though every test passed. With `coverage-omit = ["src/inventory/stock.py"]` added to `[tool.max-lint]`, the only file left in the measurement is the docstring-only `__init__.py`:
+When coverage measures no file that contains a statement, the step exits 1 even though every test passed. With `coverage-omit = ["src/inventory/stock.py"]` added to `[tool.max-lint]`, the only file left in the measurement is the docstring-only `__init__.py`. The output is the same as above except that the `stock.py` row is gone, `TOTAL` counts no statements, and the last line is added:
 
 ```console
 $ max-lint test
-============================= test session starts ==============================
-platform <platform> -- Python <python>, pytest-9.2.0, pluggy-1.7.0
-rootdir: <project>
-configfile: pyproject.toml
-plugins: platformdirs-4.14.5, cov-7.1.0, socket-0.8.1
-collected 1 item
-
-tests/test_stock.py .                                                    [100%]
-
-================================ tests coverage ================================
-_______________ coverage: platform <platform>, python <python> _______________
-
-Name                        Stmts   Miss Branch BrPart    Cover   Missing
--------------------------------------------------------------------------
 src/inventory/__init__.py       0      0      0      0  100.00%
--------------------------------------------------------------------------
 TOTAL                           0      0      0      0  100.00%
-Coverage JSON written to file <tmp>/coverage.json
-Required test coverage of 95% reached. Total coverage: 100.00%
-============================== 1 passed in <seconds>s ===============================
 max-lint: coverage measured no files that contain statements; check 'coverage-source' and 'coverage-omit' in [tool.max-lint].
 ```
 
-`max-lint` with no command runs the lint steps, then the test step, and stops at the first step that fails; `max-lint --check` does the same with black and isort in their check modes. On the example project as it was for the passing test run, the lint steps print their results first and pytest follows:
+`max-lint` with no command runs the lint steps, then the test step, and stops at the first step that fails; `max-lint --check` does the same with black and isort in their check modes. On the example project as it was for the passing test run, the lint tools print their results first, followed by the pytest output shown above:
 
 ```console
 $ max-lint
 All done! ✨ 🍰 ✨
 3 files left unchanged.
 Success: no issues found in 2 source files
-============================= test session starts ==============================
-platform <platform> -- Python <python>, pytest-9.2.0, pluggy-1.7.0
-rootdir: <project>
-configfile: pyproject.toml
-plugins: platformdirs-4.14.5, cov-7.1.0, socket-0.8.1
-collected 1 item
-
-tests/test_stock.py .                                                    [100%]
-
-================================ tests coverage ================================
-_______________ coverage: platform <platform>, python <python> _______________
-
-Name                        Stmts   Miss Branch BrPart    Cover   Missing
--------------------------------------------------------------------------
-src/inventory/__init__.py       0      0      0      0  100.00%
-src/inventory/stock.py          2      0      0      0  100.00%
--------------------------------------------------------------------------
-TOTAL                           2      0      0      0  100.00%
-Coverage JSON written to file <tmp>/coverage.json
-Required test coverage of 95% reached. Total coverage: 100.00%
-============================== 1 passed in <seconds>s ===============================
 ```
 
 The style is bundled and fixed: line length 130 for black and isort (`profile = "black"`), and flake8 with flake8-annotations, flake8-docstrings, flake8-rst-docstrings, flake8-commas, flake8-multiline-containers and pydoclint (Sphinx style). black targets the Python versions allowed by `requires-python`. Settings for these tools in the project (`[tool.black]`, `[tool.isort]`, `.flake8`, `setup.cfg`, `tox.ini`, `.isort.cfg`) have no effect. Docstrings are parsed with the `raw` and `include` directives disabled, so flake8 reports each use as `RST299`.
