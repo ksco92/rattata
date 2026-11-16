@@ -1,6 +1,5 @@
 """Load the ``[tool.max-lint]`` table that declares what a project owns."""
 
-import os
 import re
 import tomllib
 from dataclasses import dataclass
@@ -91,7 +90,7 @@ def load_config(pyproject: Path) -> Config:
         )
 
     for glob in per_file_ignores:
-        if os.path.isabs(glob) or glob.endswith("/"):
+        if Path(glob).is_absolute() or glob.endswith("/"):
             raise ConfigError(
                 f"'per-file-ignores' in [tool.max-lint] has the glob {glob!r}, which matches no file; "
                 "use a path relative to pyproject.toml that ends in a file name or pattern.",

@@ -19,12 +19,20 @@ FLAKE8_SEPARATORS = re.compile(r"[\s:,]")
 TOOL_ENVIRONMENT = {"DOCUTILSCONFIG": str(STYLE / "docutils.conf")}
 
 
+def _identity(path: str | Path) -> tuple[int, int]:
+    """Return the device and inode of the file or directory ``path`` resolves to."""
+    status = os.stat(path)
+
+    return status.st_dev, status.st_ino
+
+
 def python_files(config: Config) -> list[str]:
     """
     List the Python files under ``paths`` and ``test-paths``, minus the excluded ones.
 
     :param config: project settings; exclude patterns follow flake8's ``exclude`` matching.
-    :return: paths relative to the current directory, sorted, with each file once under the first spelling found.
+    :return: paths relative to the current directory, sorted, with each file once under the first spelling found and
+        entries that resolve to no file left out.
     :raises ConfigError: when no Python file is left to lint.
     """
     found = expand_paths(
@@ -36,8 +44,10 @@ def python_files(config: Config) -> list[str]:
     spellings: dict[tuple[int, int], str] = {}
 
     for path in found:
-        status = os.stat(path)
-        spellings.setdefault((status.st_dev, status.st_ino), os.path.relpath(path))
+        try:
+            spellings.setdefault(_identity(path), os.path.relpath(path))
+        except OSError:
+            continue
 
     result = sorted(spellings.values())
 
@@ -58,13 +68,15 @@ def per_file_ignores(config: Config, targets: list[str]) -> str:
     :return: the config file text.
     :raises ConfigError: when a target that needs ignored codes has whitespace, ``:``, ``,`` or a non-UTF-8 name.
     """
-    test_roots = [Path(path).resolve() for path in config.test_paths]
+    test_roots = {_identity(path) for path in config.test_paths}
     lines = ["[flake8]", "per-file-ignores ="]
 
     for target in targets:
         codes = list(INIT_CODES) if os.path.basename(target) == "__init__.py" else []
 
-        if any(Path(target).resolve().is_relative_to(root) for root in test_roots):
+        resolved = Path(target).resolve()
+
+        if any(_identity(location) in test_roots for location in (resolved, *resolved.parents)):
             codes.append("DOC")
 
         for glob, entry_codes in config.per_file_ignores.items():

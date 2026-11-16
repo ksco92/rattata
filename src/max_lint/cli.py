@@ -12,16 +12,15 @@ from max_lint.config import ConfigError, load_config
 from max_lint.lint import TOOL_ENVIRONMENT, lint_commands
 
 
-def run_commands(commands: list[list[str]], environment: dict[str, str]) -> int:
+def run_commands(commands: list[list[str]]) -> int:
     """
     Run each command in order, stopping at the first one that fails.
 
     :param commands: argument lists to run from the current directory.
-    :param environment: variables set on top of the current environment.
     :return: 0 when every command succeeds, otherwise 1.
     """
     for command in commands:
-        if subprocess.run(command, check=False, env={**os.environ, **environment}).returncode != 0:
+        if subprocess.run(command, check=False, env={**os.environ, **TOOL_ENVIRONMENT}).returncode != 0:
             return 1
 
     return 0
@@ -54,4 +53,4 @@ def main(argv: list[str] | None = None) -> int:
             print(f"max-lint: {error}", file=sys.stderr)
             return 2
 
-        return run_commands(commands, TOOL_ENVIRONMENT)
+        return run_commands(commands)

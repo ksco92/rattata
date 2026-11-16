@@ -610,3 +610,78 @@ def test_symlinked_test_path_exempts_the_resolved_files(
 
     assert exit_code == 0
     assert flake8_codes(output) == []
+
+
+def test_unresolvable_python_entries_are_skipped(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    """Dangling and looping symlinks named like Python files are left out and the rest is linted."""
+    write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT, "src/mod.py": FORMATTED_MODULE})
+    (tmp_path / "src/dangling.py").symlink_to("nowhere.py")
+    (tmp_path / "src/loop.py").symlink_to("loop.py")
+    (tmp_path / "src/.#mod.py").symlink_to("user@host.local.12345:1700000000")
+
+    exit_code, output = lint(tmp_path, monkeypatch, capfd, "--check")
+
+    assert exit_code == 0
+    assert "1 file would be left unchanged." in output
+
+
+def test_only_unresolvable_python_entries_is_a_configuration_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    """A project whose only Python entry is a dangling symlink has no Python files to lint."""
+    write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT})
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src/dangling.py").symlink_to("nowhere.py")
+
+    exit_code, output = lint(tmp_path, monkeypatch, capfd, "--check")
+
+    assert exit_code == 2
+    assert output == (
+        "max-lint: no Python files found under 'paths' and 'test-paths' in [tool.max-lint]; point them at Python sources.\n"
+    )
+
+
+def test_case_variant_spellings_are_linted_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    """On a case-insensitive file system a file reached as ``src`` and ``SRC/pkg`` is reported once."""
+    write_files(tmp_path, {"pyproject.toml": '[tool.max-lint]\npaths = ["src", "SRC/pkg"]\n', "src/pkg/mod.py": "VALUE = 1\n"})
+
+    if not (tmp_path / "SRC").exists():
+        pytest.skip("the file system is case-sensitive")
+
+    exit_code, output = lint(tmp_path, monkeypatch, capfd, "--check")
+
+    assert exit_code == 1
+    assert flake8_codes(output) == ["src/pkg/mod.py:1:1: D100"]
+
+
+def test_case_variant_test_path_exempts_its_files(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    """On a case-insensitive file system a test path spelled ``Tests`` exempts the files under ``tests`` from DOC."""
+    write_files(
+        tmp_path,
+        {
+            "pyproject.toml": '[tool.max-lint]\npaths = ["tests"]\ntest-paths = ["Tests"]\n',
+            "tests/test_x.py": UNDOCUMENTED_FUNCTION,
+        },
+    )
+
+    if not (tmp_path / "Tests").exists():
+        pytest.skip("the file system is case-sensitive")
+
+    exit_code, output = lint(tmp_path, monkeypatch, capfd, "--check")
+
+    assert exit_code == 0
+    assert flake8_codes(output) == []

@@ -92,6 +92,11 @@ def test_load_config_without_pyproject_names_the_file(tmp_path: Path) -> None:
             "glob '/src/top.py', which matches no file",
         ),
         ('[tool.max-lint]\npaths = ["src"]\nper-file-ignores = { "src/" = ["D100"] }\n', "glob 'src/', which matches no file"),
+        (
+            '[tool.max-lint]\npaths = ["src"]\nper-file-ignores = { "/a\\nb" = ["D100"] }\n',
+            r"glob '/a\\nb', which matches no file",
+        ),
+        ('[tool.max-lint]\npaths = ["src", "no\\nsuch"]\n', r"'paths' in .* lists 'no\\nsuch', which does not exist"),
         ('project = "x"\n\n[tool.max-lint]\npaths = ["src"]\n', "'project' in pyproject.toml must be a table"),
         ('[tool.max-lint]\npaths = [""]\n', "'paths' in .* must be a list of non-empty strings"),
         ('[tool.max-lint]\npaths = ["src"]\nper-file-ignores = { "" = ["D100"] }\n', "'per-file-ignores' in .* must be a table"),
