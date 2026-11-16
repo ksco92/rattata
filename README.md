@@ -1,5 +1,7 @@
 # max-lint
 
+[![ci](https://github.com/ksco92/rattata/actions/workflows/ci.yml/badge.svg)](https://github.com/ksco92/rattata/actions/workflows/ci.yml)
+
 **One command that runs black, isort, flake8, mypy and pytest with a single shared configuration. Every tool is pinned to an exact version.**
 
 Status (November 2026): max-lint is not yet on PyPI. The `lint` command runs black, isort, flake8 and mypy with the bundled style, the `test` command runs pytest with branch coverage and a 95% floor, and a bare `max-lint` runs both.
@@ -8,13 +10,17 @@ Status (November 2026): max-lint is not yet on PyPI. The `lint` command runs bla
 
 - [Install](#install)
 - [Usage](#usage)
+- [Configuration](#configuration)
+- [Bundled style](#bundled-style)
+- [Project mypy and pytest settings](#project-mypy-and-pytest-settings)
+- [Commands and exit codes](#commands-and-exit-codes)
 - [Known limitations](#known-limitations)
 - [Contributing](#contributing)
 - [License](#license)
 
 ## Install
 
-Requires Python 3.13 or newer and [uv](https://docs.astral.sh/uv/). max-lint is developed in the `ksco92/rattata` repository:
+Requires Python 3.13 or newer and [uv](https://docs.astral.sh/uv/). max-lint is not on PyPI, so it is installed from the `ksco92/rattata` repository:
 
 ```sh
 git clone https://github.com/ksco92/rattata
@@ -24,7 +30,7 @@ uv sync
 
 ## Usage
 
-A project declares what it owns in a `[tool.max-lint]` table of its `pyproject.toml`. This project:
+A project declares what it owns in a `[tool.max-lint]` table of its `pyproject.toml`. Run the commands from the directory that holds `pyproject.toml`; until max-lint is published, from a checkout with `uv run --project /path/to/rattata max-lint`. This project:
 
 ```toml
 # pyproject.toml
@@ -73,21 +79,6 @@ def test_restock_adds_to_existing_item() -> None:
     assert restock({'apple': 1}, 'apple', 2) == {'apple': 3}
 ```
 
-The table takes these keys:
-
-- `paths` (required): source paths.
-- `test-paths`: test paths, exempt from the pydoclint `DOC` codes. These are also the paths pytest runs, so the test step needs at least one.
-- `coverage-source`: packages or directories to measure, as pytest-cov's `--cov` takes them; directories are relative to `pyproject.toml`. The test step needs at least one.
-- `coverage-omit`: glob patterns of files to leave out of the measurement. A pattern that does not start with `*` is relative to `pyproject.toml`.
-- `exclude`: extra flake8-style exclude patterns such as `"src/inventory/generated"`, removed from black, isort and flake8 alike.
-- `per-file-ignores`: a table of glob to flake8 codes, such as `{ "src/inventory/legacy.py" = ["D103"] }`. A glob matches a file's path relative to `pyproject.toml`, and `*` also matches `/`.
-
-Every path in `paths` and `test-paths` must exist; paths are relative to `pyproject.toml` and may point outside its directory. Ignored codes add up per file: every `__init__.py` ignores `D104` and `F401`, every file under a test path ignores `DOC`, and every `per-file-ignores` entry whose glob matches adds its codes.
-
-Exit status 2 and a one-line message on stderr mean a configuration error in `pyproject.toml` or its `[tool.max-lint]` table. The message says what to fix. This includes an empty `test-paths` or a missing `coverage-source` when the test step is going to run; a bare `max-lint` reports it before it rewrites any file.
-
-Run the commands from the directory that holds `pyproject.toml`. Until max-lint is published, run it from a checkout with `uv run --project /path/to/rattata max-lint`.
-
 `max-lint lint --check` runs black and isort in their check modes, then flake8 and mypy, and rewrites no files. It stops at the first step that fails:
 
 ```console
@@ -103,8 +94,8 @@ Oh no! 💥 💔 💥
 
 ```console
 $ max-lint lint
-reformatted tests/test_stock.py
 reformatted src/inventory/stock.py
+reformatted tests/test_stock.py
 
 All done! ✨ 🍰 ✨
 2 files reformatted, 1 file left unchanged.
@@ -159,17 +150,15 @@ src/inventory/report.py:12: error: Argument 3 to "restock" has incompatible type
 Found 1 error in 1 file (checked 3 source files)
 ```
 
-The exit status is 0 when every step passes and 1 when a tool reports a failure.
-
-`max-lint test` runs pytest over `test-paths` and measures `coverage-source` with branch coverage. The terminal report lists the missing lines, and the step fails when total coverage is under 95%. pytest runs from the current directory, which is importable, so a project that is not an installed package can import its own modules in its tests. Delete `src/inventory/report.py` from the example above, which leaves `stock.py` as completed there, and the tests pass:
+`max-lint test` runs pytest over `test-paths` and measures `coverage-source` with branch coverage. Delete `src/inventory/report.py` from the example above, which leaves `stock.py` as completed there, and the tests pass:
 
 ```console
 $ max-lint test
 ============================= test session starts ==============================
-platform <platform> -- Python <python>, pytest-9.2.0, pluggy-<version>
+platform <platform> -- Python <python>, pytest-<version>, pluggy-<version>
 rootdir: <project>
 configfile: pyproject.toml
-plugins: platformdirs-<version>, cov-7.1.0, socket-0.8.1
+plugins: platformdirs-<version>, cov-<version>, socket-<version>
 collected 1 item
 
 tests/test_stock.py .                                                    [100%]
@@ -188,18 +177,7 @@ Required test coverage of 95% reached. Total coverage: 100.00%
 ============================== 1 passed in <seconds>s ===============================
 ```
 
-The output shows `<project>` for the project directory, `<tmp>` for a temporary directory, `<platform>` for the operating system, `<python>` for the Python version, `<python-build>` for the Python version with its release level, `<version>` for the versions of `pluggy` and `platformdirs`, and `<seconds>` for the run time; everything else is as printed. The `Coverage JSON written` line names a report in a temporary directory that max-lint reads to find out whether anything was measured. Coverage writes its data file, `.coverage`, to the project directory.
-
-The coverage settings are fixed: branch coverage on, a floor of 95% compared to two decimals, the missing lines shown, and `pragma: no cover` and `if __name__ == .__main__.:` as the excluded lines. `[tool.coverage.*]`, `.coveragerc`, `.coveragerc.toml` and the coverage sections of `setup.cfg` and `tox.ini` have no effect. The project's `[tool.pytest.ini_options]` is still read, so keys such as `pythonpath` work; pytest runs with `--import-mode=importlib`.
-
-When coverage measures no file that contains a statement, the step exits 1 even though every test passed. With `coverage-omit = ["src/inventory/stock.py"]` added to `[tool.max-lint]`, the only file left in the measurement is the docstring-only `__init__.py`. The output is the same as above except that the `stock.py` row is gone, `TOTAL` counts no statements, and the last line is added:
-
-```console
-$ max-lint test
-src/inventory/__init__.py       0      0      0      0  100.00%
-TOTAL                           0      0      0      0  100.00%
-max-lint: coverage measured no files that contain statements; check 'coverage-source' and 'coverage-omit' in [tool.max-lint].
-```
+The output shows `<project>` for the project directory, `<tmp>` for a temporary directory, `<platform>` for the operating system, `<python>` for the Python version, `<python-build>` for the Python version with its release level, `<version>` for the version of the package named before it, and `<seconds>` for the run time; everything else is as printed. The `Coverage JSON written` line names a report in a temporary directory that max-lint reads to find out whether anything was measured. Coverage writes its data file, `.coverage`, to the project directory.
 
 `max-lint` with no command runs the lint steps, then the test step, and stops at the first step that fails; `max-lint --check` does the same with black and isort in their check modes. On the example project as it was for the passing test run, the lint tools print their results first, followed by the pytest output shown above:
 
@@ -210,9 +188,37 @@ All done! ✨ 🍰 ✨
 Success: no issues found in 2 source files
 ```
 
-The style is bundled and fixed: line length 130 for black and isort (`profile = "black"`), and flake8 with flake8-annotations, flake8-docstrings, flake8-rst-docstrings, flake8-commas, flake8-multiline-containers and pydoclint (Sphinx style). black targets the Python versions allowed by `requires-python`. Settings for these tools in the project (`[tool.black]`, `[tool.isort]`, `.flake8`, `setup.cfg`, `tox.ini`, `.isort.cfg`) have no effect. Docstrings are parsed with the `raw` and `include` directives disabled, so flake8 reports each use as `RST299`.
+## Configuration
 
-mypy checks the files under `paths` only, so test code is not type-checked unless a `paths` entry also covers it. It always runs with `disallow_untyped_defs`, `warn_redundant_casts` and `no_implicit_optional`. For everything else it reads the `[tool.mypy]` table and the `[[tool.mypy.overrides]]` entries of the project's `pyproject.toml`, such as `python_version`, `plugins` and per-module `ignore_missing_imports`; a project with no `[tool.mypy]` table works, and no other mypy configuration file (`mypy.ini`, `setup.cfg`) is read:
+The `[tool.max-lint]` table takes these keys and no others:
+
+| Key | Type | Required | Meaning |
+| --- | --- | --- | --- |
+| `paths` | list of strings | yes | Source paths to format, lint and type-check. |
+| `test-paths` | list of strings | no | Test paths: exempt from the pydoclint `DOC` codes and run by pytest, so the test step needs at least one. |
+| `coverage-source` | list of strings | no | Packages or directories to measure, as pytest-cov's `--cov` takes them; the test step needs at least one. |
+| `coverage-omit` | list of strings | no | Glob patterns of files to leave out of the measurement; one not starting with `*` is relative to `pyproject.toml`. |
+| `exclude` | list of strings | no | Extra flake8-style exclude patterns such as `"src/inventory/generated"`, removed from black, isort and flake8 alike. |
+| `per-file-ignores` | table of glob to list of strings | no | Flake8 codes to ignore per file, such as `{ "src/inventory/legacy.py" = ["D103"] }`; a glob matches a file's path relative to `pyproject.toml`, and `*` also matches `/`. |
+
+Every path in `paths` and `test-paths` must exist; paths are relative to `pyproject.toml` and may point outside its directory. Ignored codes add up per file: every `__init__.py` ignores `D104` and `F401`, every file under a test path ignores `DOC`, and every `per-file-ignores` entry whose glob matches adds its codes.
+
+## Bundled style
+
+The tools are black, isort, flake8, mypy, pytest, pytest-cov, pytest-socket and coverage, each pinned to an exact version in [pyproject.toml](pyproject.toml). The flake8 plugins are flake8-annotations, flake8-docstrings, flake8-rst-docstrings, flake8-commas, flake8-multiline-containers and pydoclint.
+
+- black and isort use line length 130, and isort uses `profile = "black"`. black targets the Python versions allowed by `requires-python`.
+- flake8 selects `ANN401` in addition to its defaults and ignores `E203` and `E501`. pydoclint checks Sphinx-style docstrings without argument types in the docstring and skips private functions and return types.
+- Docstrings are parsed with the `raw` and `include` directives disabled, so flake8 reports each use as `RST299`.
+- mypy always runs with `disallow_untyped_defs`, `warn_redundant_casts` and `no_implicit_optional`.
+- Coverage is branch coverage with a floor of 95% compared to two decimals, the missing lines shown, and `pragma: no cover` and `if __name__ == .__main__.:` as the excluded lines.
+- pytest runs with `--import-mode=importlib`, and the current directory is importable, so a project that is not an installed package can import its own modules in its tests.
+
+Settings for these tools in the project (`[tool.black]`, `[tool.isort]`, `.flake8`, `setup.cfg`, `tox.ini`, `.isort.cfg`, `[tool.coverage.*]`, `.coveragerc` and `.coveragerc.toml`) have no effect.
+
+## Project mypy and pytest settings
+
+mypy checks the files under `paths` only, so test code is not type-checked unless a `paths` entry also covers it. Apart from the three locked settings, it reads the `[tool.mypy]` table and the `[[tool.mypy.overrides]]` entries of the project's `pyproject.toml`, such as `python_version`, `plugins` and per-module `ignore_missing_imports`; a project with no `[tool.mypy]` table works, and no other mypy configuration file (`mypy.ini`, `setup.cfg`) is read:
 
 ```toml
 [tool.mypy]
@@ -223,23 +229,38 @@ module = ["legacy_sdk.*"]
 ignore_missing_imports = true
 ```
 
-A project that sets one of the three locked settings in `[tool.mypy]` or in an override, under any name mypy accepts for it (`allow_untyped_defs`, for example), gets exit status 2 before any tool runs. mypy resolves third-party imports from the environment max-lint runs in, and writes its cache to `.mypy_cache` in the current directory. A plugin named by module must be importable from that environment because the working directory is not on the import path; a plugin given as a file path works.
+A project that sets one of the three locked settings in `[tool.mypy]` or in an override, under any name mypy accepts for it (`allow_untyped_defs`, for example), gets exit status 2 before any tool runs. mypy resolves third-party imports from the environment max-lint runs in, and writes its cache to `.mypy_cache` in the current directory. A plugin named by module must be importable from that environment because the working directory is not on the import path; a plugin given as a file path works. The project's `[tool.pytest.ini_options]` is read, so keys such as `pythonpath` work.
 
-`max-lint --help` prints the available commands and `max-lint --version` the installed version.
+## Commands and exit codes
+
+- `max-lint` runs the lint steps, then the test step; `max-lint --check` does the same with black and isort in their check modes.
+- `max-lint lint` formats with black and isort, then runs flake8 and mypy; `max-lint lint --check` rewrites no files.
+- `max-lint test` runs pytest with coverage.
+- `max-lint --help` prints the available commands and `max-lint --version` the installed version.
+
+Every command stops at the first step that fails. The exit status is 0 when every step passes and 1 when a tool reports a failure. The step also exits 1 when coverage measures no file that contains a statement, even if every test passed. With `coverage-omit = ["src/inventory/stock.py"]` added to the example's `[tool.max-lint]`, the only file left in the measurement is the docstring-only `__init__.py`. The output is the same as in the passing run except that the `stock.py` row is gone, `TOTAL` counts no statements, and the last line is added:
+
+```console
+$ max-lint test
+src/inventory/__init__.py       0      0      0      0  100.00%
+TOTAL                           0      0      0      0  100.00%
+max-lint: coverage measured no files that contain statements; check 'coverage-source' and 'coverage-omit' in [tool.max-lint].
+```
+
+Exit status 2 and a one-line message on stderr mean a configuration error in `pyproject.toml` or its `[tool.max-lint]` table. The message says what to fix. This includes an empty `test-paths` or a missing `coverage-source` when the test step is going to run; a bare `max-lint` reports it before it rewrites any file.
 
 ## Known limitations
 
 - `max-lint test` and a bare `max-lint` run the project's tests, so the project's code, its `conftest.py` files and its pytest configuration execute. Coverage can be changed from inside that code, for example through the coverage API in a `conftest.py`.
 - A project's `[tool.mypy]` table is trusted configuration. Plugins named there are loaded and run, and other settings there can make mypy write and read files outside the project and expand environment variables, so `max-lint lint` is not a read-only operation on a repository that has that table.
+- A `coverage-source` entry that matches nothing only prints a coverage warning and does not fail the run while another entry measures code.
+- Two `paths` entries that each hold a module of the same name without an `__init__.py` make mypy report a duplicate module and the lint run fail.
+- A file named like a library module that mypy uses, such as `typing_extensions.py` in the project root, makes the mypy step fail.
+- `max-lint --check test` accepts `--check` without effect: the tests run and no formatting is checked.
 
 ## Contributing
 
-Run the tests with branch coverage:
-
-```sh
-uv run pytest --cov=max_lint --cov-branch --cov-fail-under=95
-```
-
+Setup, the checks a change must pass and the rules for the bundled style are in [CONTRIBUTING.md](CONTRIBUTING.md).
 Bugs and proposals go in [GitHub issues](https://github.com/ksco92/rattata/issues).
 
 ## License
