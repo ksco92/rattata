@@ -8,6 +8,7 @@ Status (November 2026): max-lint is not yet on PyPI. The `lint` command runs bla
 
 - [Install](#install)
 - [Usage](#usage)
+- [Known limitations](#known-limitations)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -156,7 +157,7 @@ The exit status is 0 when every step passes and 1 when a tool reports a failure.
 
 The style is bundled and fixed: line length 130 for black and isort (`profile = "black"`), and flake8 with flake8-annotations, flake8-docstrings, flake8-rst-docstrings, flake8-commas, flake8-multiline-containers and pydoclint (Sphinx style). black targets the Python versions allowed by `requires-python`. Settings for these tools in the project (`[tool.black]`, `[tool.isort]`, `.flake8`, `setup.cfg`, `tox.ini`, `.isort.cfg`) have no effect. Docstrings are parsed with the `raw` and `include` directives disabled, so flake8 reports each use as `RST299`.
 
-mypy checks the files under `paths` only, so test code is not type-checked unless a `paths` entry also covers it. It always runs with `disallow_untyped_defs`, `warn_redundant_casts` and `no_implicit_optional`. For everything else it reads the `[tool.mypy]` table and the `[[tool.mypy.overrides]]` entries of the project's `pyproject.toml`, such as `python_version`, `plugins` and per-module `ignore_missing_imports`; a project with no `[tool.mypy]` table works, and no other mypy configuration file (`mypy.ini`, `setup.cfg`) is read. Plugins named there are loaded and run, and report, cache and path settings there can make mypy write and read files outside the project, so `max-lint lint` on a repository with a `[tool.mypy]` table is not a read-only operation:
+mypy checks the files under `paths` only, so test code is not type-checked unless a `paths` entry also covers it. It always runs with `disallow_untyped_defs`, `warn_redundant_casts` and `no_implicit_optional`. For everything else it reads the `[tool.mypy]` table and the `[[tool.mypy.overrides]]` entries of the project's `pyproject.toml`, such as `python_version`, `plugins` and per-module `ignore_missing_imports`; a project with no `[tool.mypy]` table works, and no other mypy configuration file (`mypy.ini`, `setup.cfg`) is read.:
 
 ```toml
 [tool.mypy]
@@ -170,6 +171,10 @@ ignore_missing_imports = true
 A project that sets one of the three locked settings in `[tool.mypy]` or in an override, under any name mypy accepts for it (`allow_untyped_defs`, for example), gets exit status 2 before any tool runs. mypy resolves third-party imports from the environment max-lint runs in, and writes its cache to `.mypy_cache` in the current directory. A plugin named by module must be importable from that environment because the working directory is not on the import path; a plugin given as a file path works.
 
 `max-lint --help` prints the available commands and `max-lint --version` the installed version.
+
+## Known limitations
+
+- A project's `[tool.mypy]` table is trusted configuration. Plugins named there are loaded and run, and other settings there can make mypy write and read files outside the project and expand environment variables, so `max-lint lint` is not a read-only operation on a repository that has that table.
 
 ## Contributing
 

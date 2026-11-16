@@ -114,27 +114,18 @@ def lint_commands(config: Config, check: bool, scratch: Path) -> list[list[str]]
     ignores.write_text(per_file_ignores(config, targets), encoding="utf-8")
     formatters = str(STYLE / "formatters.toml")
     root = Path.cwd()
-    black = [sys.executable, "-P", "-m", "black", "--config", formatters]
+    black = [sys.executable, "-m", "black", "--config", formatters]
     black += [f"--target-version={version}" for version in config.black_target_versions]
-    isort = [sys.executable, "-P", "-m", "isort", "--settings-file", formatters, "--src", str(root / "src"), "--src", str(root)]
+    isort = [sys.executable, "-m", "isort", "--settings-file", formatters, "--src", str(root / "src"), "--src", str(root)]
 
     if check:
         black.append("--check")
         isort.append("--check-only")
 
-    flake8 = [sys.executable, "-P", "-m", "flake8", "--config", str(STYLE / "flake8.ini"), "--append-config", str(ignores)]
+    flake8 = [sys.executable, "-m", "flake8", "--config", str(STYLE / "flake8.ini"), "--append-config", str(ignores)]
 
     commands = [[*command, "--", *targets] for command in (black, isort, flake8)]
-    mypy = [
-        sys.executable,
-        "-P",
-        "-m",
-        "mypy",
-        "--config-file",
-        str(root / "pyproject.toml"),
-        "--python-executable",
-        sys.executable,
-    ]
-    mypy += ["--disallow-untyped-defs", "--warn-redundant-casts", "--no-implicit-optional"]
+    mypy = [sys.executable, "-m", "mypy", "--config-file", str(root / "pyproject.toml")]
+    mypy += ["--python-executable", sys.executable, "--disallow-untyped-defs", "--warn-redundant-casts", "--no-implicit-optional"]
 
     return [*commands, [*mypy, "--", *(f"./{path}" for path in python_files(replace(config, test_paths=[])))]]

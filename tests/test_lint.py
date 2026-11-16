@@ -848,7 +848,6 @@ def test_mypy_command_carries_the_locked_settings(tmp_path: Path, monkeypatch: p
 
     assert commands[-1] == [
         sys.executable,
-        "-P",
         "-m",
         "mypy",
         "--config-file",
