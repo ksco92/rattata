@@ -10,6 +10,7 @@ from pathlib import Path
 
 from max_lint.config import ConfigError, load_config
 from max_lint.lint import TOOL_ENVIRONMENT, lint_commands
+from max_lint.pytest_step import FAIL_UNDER, pytest_command, run_tests
 
 
 def run_commands(commands: list[list[str]]) -> int:
@@ -38,19 +39,32 @@ def main(argv: list[str] | None = None) -> int:
         description="Run black, isort, flake8, mypy and pytest with a single shared configuration.",
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {version('max-lint')}")
+    parser.add_argument("--check", action="store_true", help="check formatting with black and isort without rewriting files")
     subcommands = parser.add_subparsers(dest="command")
     lint_parser = subcommands.add_parser("lint", help="format with black and isort, then check with flake8 and mypy")
-    lint_parser.add_argument("--check", action="store_true", help="check formatting with black and isort without rewriting files")
+    lint_parser.add_argument(
+        "--check",
+        action="store_true",
+        default=argparse.SUPPRESS,
+        help="check formatting with black and isort without rewriting files",
+    )
+    subcommands.add_parser("test", help=f"run pytest with branch coverage and a {FAIL_UNDER}%% floor")
     arguments = parser.parse_args(argv)
 
-    if arguments.command is None:
-        return 0
+    with tempfile.TemporaryDirectory() as scratch_directory:
+        scratch = Path(scratch_directory)
+        lint = arguments.command != "test"
+        test = arguments.command != "lint"
 
-    with tempfile.TemporaryDirectory() as scratch:
         try:
-            commands = lint_commands(load_config(Path("pyproject.toml")), check=arguments.check, scratch=Path(scratch))
+            config = load_config(Path("pyproject.toml"))
+            commands = lint_commands(config, check=arguments.check, scratch=scratch) if lint else []
+            test_command = pytest_command(config, scratch) if test else []
         except ConfigError as error:
             print(f"max-lint: {error}", file=sys.stderr)
             return 2
 
-        return run_commands(commands)
+        if run_commands(commands) != 0:
+            return 1
+
+        return run_tests(test_command, scratch) if test else 0
