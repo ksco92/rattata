@@ -2,7 +2,7 @@
 
 **One command that runs black, isort, flake8, mypy and pytest with a single shared configuration. Every tool is pinned to an exact version.**
 
-Status (November 2026): max-lint is not yet on PyPI. The `lint` command runs black, isort and flake8 with the bundled style; the mypy and pytest steps are not implemented yet.
+Status (November 2026): max-lint is not yet on PyPI. The `lint` command runs black, isort, flake8 and mypy with the bundled style; the pytest step is not implemented yet.
 
 ## Contents
 
@@ -81,7 +81,7 @@ Exit status 2 and a one-line message on stderr mean a configuration error in `py
 
 Run the commands from the directory that holds `pyproject.toml`. Until max-lint is published, run it from a checkout with `uv run --project /path/to/rattata max-lint lint`.
 
-`max-lint lint --check` runs black and isort in their check modes, then flake8, and writes nothing. It stops at the first step that fails:
+`max-lint lint --check` runs black and isort in their check modes, then flake8 and mypy, and rewrites no files. It stops at the first step that fails:
 
 ```console
 $ max-lint lint --check
@@ -92,7 +92,7 @@ Oh no! 💥 💔 💥
 2 files would be reformatted, 1 file would be left unchanged.
 ```
 
-`max-lint lint` rewrites the files with black, then isort, then runs flake8:
+`max-lint lint` rewrites the files with black, then isort, then runs flake8 and mypy:
 
 ```console
 $ max-lint lint
@@ -105,9 +105,32 @@ src/inventory/stock.py:4:1: DOC101 Function `restock`: Docstring contains fewer 
 src/inventory/stock.py:4:1: DOC103 Function `restock`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [count: int, item: str].
 ```
 
+Once flake8 passes, mypy runs last. With the docstring completed and a new `src/inventory/report.py` that passes a string where `restock` expects an int, the same command ends in mypy:
+
+```console
+$ max-lint lint
+All done! ✨ 🍰 ✨
+4 files left unchanged.
+src/inventory/report.py:12: error: Argument 3 to "restock" has incompatible type "str"; expected "int"  [arg-type]
+Found 1 error in 1 file (checked 3 source files)
+```
+
 The exit status is 0 when every step passes and 1 when a tool reports a failure.
 
 The style is bundled and fixed: line length 130 for black and isort (`profile = "black"`), and flake8 with flake8-annotations, flake8-docstrings, flake8-rst-docstrings, flake8-commas, flake8-multiline-containers and pydoclint (Sphinx style). black targets the Python versions allowed by `requires-python`. Settings for these tools in the project (`[tool.black]`, `[tool.isort]`, `.flake8`, `setup.cfg`, `tox.ini`, `.isort.cfg`) have no effect. Docstrings are parsed with the `raw` and `include` directives disabled, so flake8 reports each use as `RST299`.
+
+mypy checks the files under `paths` only, so test code is not type-checked unless a `paths` entry also covers it. It always runs with `disallow_untyped_defs`, `warn_redundant_casts` and `no_implicit_optional`. For everything else it reads the `[tool.mypy]` table and the `[[tool.mypy.overrides]]` entries of the project's `pyproject.toml`, such as `python_version`, `plugins` and per-module `ignore_missing_imports`; a project with no `[tool.mypy]` table works, and no other mypy configuration file (`mypy.ini`, `setup.cfg`) is read:
+
+```toml
+[tool.mypy]
+python_version = "3.13"
+
+[[tool.mypy.overrides]]
+module = ["legacy_sdk.*"]
+ignore_missing_imports = true
+```
+
+A project that sets one of the three locked settings in `[tool.mypy]` or in an override, under any name mypy accepts for it (`allow_untyped_defs`, for example), gets exit status 2 before any tool runs. mypy resolves third-party imports from the environment max-lint runs in, and writes its cache to `.mypy_cache` in the current directory. A plugin named by module must be importable from that environment because the working directory is not on the import path; a plugin given as a file path works.
 
 `max-lint --help` prints the available commands and `max-lint --version` the installed version.
 
