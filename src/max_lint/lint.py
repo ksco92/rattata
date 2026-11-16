@@ -107,7 +107,7 @@ def lint_commands(config: Config, check: bool, scratch: Path) -> list[list[str]]
     :param config: project settings.
     :param check: run black and isort in their check modes, which write nothing.
     :param scratch: directory outside the project for the generated flake8 config; it must outlive the commands.
-    :return: one argument list per tool, each run with the current interpreter and without the working directory on ``sys.path``.
+    :return: one argument list per tool, each run with the current interpreter.
     """
     targets = python_files(config)
     ignores = scratch / "per-file-ignores.ini"

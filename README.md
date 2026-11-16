@@ -157,7 +157,7 @@ The exit status is 0 when every step passes and 1 when a tool reports a failure.
 
 The style is bundled and fixed: line length 130 for black and isort (`profile = "black"`), and flake8 with flake8-annotations, flake8-docstrings, flake8-rst-docstrings, flake8-commas, flake8-multiline-containers and pydoclint (Sphinx style). black targets the Python versions allowed by `requires-python`. Settings for these tools in the project (`[tool.black]`, `[tool.isort]`, `.flake8`, `setup.cfg`, `tox.ini`, `.isort.cfg`) have no effect. Docstrings are parsed with the `raw` and `include` directives disabled, so flake8 reports each use as `RST299`.
 
-mypy checks the files under `paths` only, so test code is not type-checked unless a `paths` entry also covers it. It always runs with `disallow_untyped_defs`, `warn_redundant_casts` and `no_implicit_optional`. For everything else it reads the `[tool.mypy]` table and the `[[tool.mypy.overrides]]` entries of the project's `pyproject.toml`, such as `python_version`, `plugins` and per-module `ignore_missing_imports`; a project with no `[tool.mypy]` table works, and no other mypy configuration file (`mypy.ini`, `setup.cfg`) is read.:
+mypy checks the files under `paths` only, so test code is not type-checked unless a `paths` entry also covers it. It always runs with `disallow_untyped_defs`, `warn_redundant_casts` and `no_implicit_optional`. For everything else it reads the `[tool.mypy]` table and the `[[tool.mypy.overrides]]` entries of the project's `pyproject.toml`, such as `python_version`, `plugins` and per-module `ignore_missing_imports`; a project with no `[tool.mypy]` table works, and no other mypy configuration file (`mypy.ini`, `setup.cfg`) is read:
 
 ```toml
 [tool.mypy]
