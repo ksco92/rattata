@@ -27,3 +27,7 @@ What each command does is under [Commands and exit codes](README.md#commands-and
 
 - The bundled style is not relaxed to make a change pass. Fix what the run reports in the code instead of adding `per-file-ignores`, `exclude`, `coverage-omit`, `# noqa`, `# type: ignore` or `# pragma: no cover`, and do not change a setting under `src/max_lint/style/` to get a change through.
 - A change that alters behaviour comes with tests, and `uv run max-lint --check` passes before it is proposed.
+
+## Release
+
+A change that should be released bumps `version` in `pyproject.toml` and the matching entry in `uv.lock` (`uv lock` updates it). Merging it to `main` publishes that version to PyPI when PyPI does not have it yet; a merge that leaves the version unchanged publishes nothing.
