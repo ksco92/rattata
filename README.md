@@ -100,7 +100,7 @@ src/inventory/stock.py:4:1: DOC103 Function `restock`: Docstring arguments are d
 
 The exit status is 0 when every step passes and 1 when a tool reports a failure.
 
-The style is bundled and fixed: line length 130 for black, isort (`profile = "black"`) and flake8, with flake8-annotations, flake8-docstrings, flake8-rst-docstrings, flake8-commas, flake8-multiline-containers and pydoclint (Sphinx style). black targets the Python versions allowed by `requires-python`. Settings for these tools in the project (`[tool.black]`, `[tool.isort]`, `.flake8`, `setup.cfg`, `tox.ini`, `.isort.cfg`) have no effect.
+The style is bundled and fixed: line length 130 for black and isort (`profile = "black"`), and flake8 with flake8-annotations, flake8-docstrings, flake8-rst-docstrings, flake8-commas, flake8-multiline-containers and pydoclint (Sphinx style). black targets the Python versions allowed by `requires-python`. Settings for these tools in the project (`[tool.black]`, `[tool.isort]`, `.flake8`, `setup.cfg`, `tox.ini`, `.isort.cfg`) have no effect.
 
 `max-lint --help` prints the available commands and `max-lint --version` the installed version.
 
