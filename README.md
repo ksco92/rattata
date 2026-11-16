@@ -4,6 +4,13 @@
 
 Status (November 2026): max-lint is not yet on PyPI. The `lint` command runs black, isort and flake8 with the bundled style; the mypy and pytest steps are not implemented yet.
 
+## Contents
+
+- [Install](#install)
+- [Usage](#usage)
+- [Contributing](#contributing)
+- [License](#license)
+
 ## Install
 
 Requires Python 3.13 or newer and [uv](https://docs.astral.sh/uv/). max-lint is developed in the `ksco92/rattata` repository:
@@ -70,7 +77,7 @@ The table takes these keys:
 
 Every path in `paths` and `test-paths` must exist; paths are relative to `pyproject.toml` and may point outside its directory. Ignored codes add up per file: every `__init__.py` ignores `D104` and `F401`, every file under a test path ignores `DOC`, and every `per-file-ignores` entry whose glob matches adds its codes.
 
-Exit status 2 and a one-line message on stderr mean a configuration error: a missing or invalid `pyproject.toml`, no `[tool.max-lint]` table, a missing or empty `paths`, a path that does not exist, a value of the wrong type, an unknown key, a code that is not capital letters optionally followed by digits, no Python files to lint, or a file that needs ignored codes but has whitespace, `:` or `,` in its path. The message names the file, table, key or path at fault.
+Exit status 2 and a one-line message on stderr mean a configuration error in `pyproject.toml` or its `[tool.max-lint]` table. The message says what to fix.
 
 Run the commands from the directory that holds `pyproject.toml`. Until max-lint is published, run it from a checkout with `uv run --project /path/to/rattata max-lint lint`.
 
@@ -100,7 +107,7 @@ src/inventory/stock.py:4:1: DOC103 Function `restock`: Docstring arguments are d
 
 The exit status is 0 when every step passes and 1 when a tool reports a failure.
 
-The style is bundled and fixed: line length 130 for black and isort (`profile = "black"`), and flake8 with flake8-annotations, flake8-docstrings, flake8-rst-docstrings, flake8-commas, flake8-multiline-containers and pydoclint (Sphinx style). black targets the Python versions allowed by `requires-python`. Settings for these tools in the project (`[tool.black]`, `[tool.isort]`, `.flake8`, `setup.cfg`, `tox.ini`, `.isort.cfg`) have no effect.
+The style is bundled and fixed: line length 130 for black and isort (`profile = "black"`), and flake8 with flake8-annotations, flake8-docstrings, flake8-rst-docstrings, flake8-commas, flake8-multiline-containers and pydoclint (Sphinx style). black targets the Python versions allowed by `requires-python`. Settings for these tools in the project (`[tool.black]`, `[tool.isort]`, `.flake8`, `setup.cfg`, `tox.ini`, `.isort.cfg`) have no effect. Docstrings are parsed with the `raw` and `include` directives disabled, so flake8 reports each use as `RST299`.
 
 `max-lint --help` prints the available commands and `max-lint --version` the installed version.
 
