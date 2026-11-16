@@ -19,7 +19,7 @@ STYLE = files("max_lint") / "style"
 BUNDLED_EXCLUDE = (".git", ".venv")
 INIT_CODES = ("D104", "F401")
 FLAKE8_SEPARATORS = re.compile(r"[\s:,]")
-TOOL_ENVIRONMENT = {"DOCUTILSCONFIG": str(STYLE / "docutils.conf")}
+TOOL_ENVIRONMENT = {"DOCUTILSCONFIG": str(STYLE / "docutils.conf"), "PYTHONSAFEPATH": "1"}
 
 
 def _identity(path: str | Path) -> tuple[int, int]:
@@ -125,7 +125,16 @@ def lint_commands(config: Config, check: bool, scratch: Path) -> list[list[str]]
     flake8 = [sys.executable, "-P", "-m", "flake8", "--config", str(STYLE / "flake8.ini"), "--append-config", str(ignores)]
 
     commands = [[*command, "--", *targets] for command in (black, isort, flake8)]
-    mypy = [sys.executable, "-P", "-m", "mypy", "--config-file", str(root / "pyproject.toml")]
+    mypy = [
+        sys.executable,
+        "-P",
+        "-m",
+        "mypy",
+        "--config-file",
+        str(root / "pyproject.toml"),
+        "--python-executable",
+        sys.executable,
+    ]
     mypy += ["--disallow-untyped-defs", "--warn-redundant-casts", "--no-implicit-optional"]
 
-    return [*commands, [*mypy, "--", *python_files(replace(config, test_paths=[]))]]
+    return [*commands, [*mypy, "--", *(f"./{path}" for path in python_files(replace(config, test_paths=[])))]]

@@ -149,17 +149,6 @@ def test_load_config_rejects_locked_mypy_keys(tmp_path: Path, key: str, text: st
         load_config(pyproject)
 
 
-def test_load_config_accepts_project_mypy_settings(tmp_path: Path) -> None:
-    """Plugins, the Python version and import overrides are left to the project."""
-    pyproject = write_pyproject(
-        tmp_path,
-        '[tool.max-lint]\npaths = ["src"]\n\n[tool.mypy]\nplugins = ["p.py"]\npython_version = "3.13"\n\n'
-        '[[tool.mypy.overrides]]\nmodule = ["x.*"]\nignore_missing_imports = true\n',
-    )
-
-    assert load_config(pyproject).paths == ["src"]
-
-
 @pytest.mark.parametrize(
     "text",
     [

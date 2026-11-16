@@ -104,6 +104,7 @@ class Box:
         self.size = size
 '''
 UNTYPED_FUNCTION = '"""Fixture module."""\n\n\ndef run():  # noqa: ANN201\n    """Do nothing."""\n'
+MISTYPED_VALUE = '"""Fixture module."""\n\nVALUE: int = "text"\n'
 MYPY_ERROR = "src/mod.py:4: error: Function is missing a return type annotation  [no-untyped-def]"
 MISSING_IMPORT = '"""Fixture module."""\n\nimport missing_pkg\n\nVALUE = missing_pkg.VALUE\n'
 MISSING_IMPORT_OVERRIDE = '\n[[tool.mypy.overrides]]\nmodule = ["missing_pkg.*"]\nignore_missing_imports = true\n'
@@ -839,7 +840,7 @@ def test_mypy_locked_settings_apply_without_project_settings(
 
 
 def test_mypy_command_carries_the_locked_settings(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """The mypy command is isolated from the working directory, reads only the project's pyproject.toml and passes the locked flags."""
+    """The mypy command passes the project's pyproject.toml and the locked flags."""
     write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT, "src/mod.py": FORMATTED_MODULE})
     monkeypatch.chdir(tmp_path)
 
@@ -852,11 +853,13 @@ def test_mypy_command_carries_the_locked_settings(tmp_path: Path, monkeypatch: p
         "mypy",
         "--config-file",
         str(tmp_path.resolve() / "pyproject.toml"),
+        "--python-executable",
+        sys.executable,
         "--disallow-untyped-defs",
         "--warn-redundant-casts",
         "--no-implicit-optional",
         "--",
-        "src/mod.py",
+        "./src/mod.py",
     ]
 
 
@@ -983,3 +986,63 @@ def test_locked_mypy_key_is_rejected_before_any_tool_runs(
     assert exit_code == 2
     assert output == f"max-lint: 'disallow_untyped_defs' is set in {place}, but max-lint fixes it; remove it.\n"
     assert (tmp_path / "src/mod.py").read_text() == UNFORMATTED_MODULE
+
+
+def test_mypy_workers_do_not_import_project_modules(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    """A root module named like a mypy dependency does not run in mypy's worker processes."""
+    marker = tmp_path / "imported"
+    write_files(
+        tmp_path,
+        {
+            "pyproject.toml": PLAIN_PYPROJECT + "\n[tool.mypy]\nnum_workers = 2\nlocal_partial_types = true\n",
+            "src/mod.py": FORMATTED_MODULE,
+            "librt.py": f"open({str(marker)!r}, 'w').close()\n",
+        },
+    )
+
+    exit_code, output = lint(tmp_path, monkeypatch, capfd, "--check")
+
+    assert exit_code == 0
+    assert "Success: no issues found in 1 source file" in output
+    assert not marker.exists()
+
+
+def test_mypy_ignores_the_python_executable_named_by_the_project(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    """A ``python_executable`` in ``[tool.mypy]`` is not run."""
+    marker = tmp_path / "imported"
+    write_files(
+        tmp_path,
+        {
+            "pyproject.toml": PLAIN_PYPROJECT + '\n[tool.mypy]\npython_executable = "./evil.sh"\n',
+            "src/mod.py": FORMATTED_MODULE,
+            "evil.sh": f'#!/bin/sh\ntouch {str(marker)!r}\nexec {sys.executable!r} "$@"\n',
+        },
+    )
+    (tmp_path / "evil.sh").chmod(0o755)
+
+    exit_code, _ = lint(tmp_path, monkeypatch, capfd, "--check")
+
+    assert exit_code == 0
+    assert not marker.exists()
+
+
+def test_mypy_checks_a_file_whose_name_starts_with_at_sign(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    """A file named ``@x.py`` is type-checked, not read as a file of arguments."""
+    write_files(tmp_path, {"pyproject.toml": '[tool.max-lint]\npaths = ["@x.py"]\n', "@x.py": MISTYPED_VALUE})
+
+    exit_code, output = lint(tmp_path, monkeypatch, capfd, "--check")
+
+    assert exit_code == 1
+    assert '@x.py:3: error: Incompatible types in assignment (expression has type "str", variable has type "int")' in output
