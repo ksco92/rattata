@@ -7,7 +7,7 @@ from pathlib import Path
 
 from black.files import infer_target_version
 
-LIST_KEYS = ("paths", "test-paths", "exclude")
+LIST_KEYS = ("paths", "test-paths", "exclude", "coverage-source", "coverage-omit")
 KNOWN_KEYS = (*LIST_KEYS, "per-file-ignores")
 FLAKE8_CODE = re.compile(r"[A-Z]+[0-9]*")
 LOCKED_MYPY_KEYS = (
@@ -32,6 +32,8 @@ class Config:
     paths: list[str]
     test_paths: list[str]
     exclude: list[str]
+    coverage_source: list[str]
+    coverage_omit: list[str]
     per_file_ignores: dict[str, list[str]]
     black_target_versions: list[str]
 
@@ -145,6 +147,8 @@ def load_config(pyproject: Path) -> Config:
         paths=table["paths"],
         test_paths=table.get("test-paths", []),
         exclude=table.get("exclude", []),
+        coverage_source=table.get("coverage-source", []),
+        coverage_omit=table.get("coverage-omit", []),
         per_file_ignores=per_file_ignores,
         black_target_versions=[version.name.lower() for version in infer_target_version(document) or []],
     )

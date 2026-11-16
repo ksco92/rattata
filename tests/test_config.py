@@ -32,6 +32,8 @@ requires-python = ">=3.12"
 paths = ["src", "../shared"]
 test-paths = ["tests"]
 exclude = ["generated", "src/vendored/*"]
+coverage-source = ["src", "shared"]
+coverage-omit = ["*/generated.py"]
 per-file-ignores = { "src/legacy/*" = ["D100", "D103"] }
 """,
     )
@@ -40,6 +42,8 @@ per-file-ignores = { "src/legacy/*" = ["D100", "D103"] }
         paths=["src", "../shared"],
         test_paths=["tests"],
         exclude=["generated", "src/vendored/*"],
+        coverage_source=["src", "shared"],
+        coverage_omit=["*/generated.py"],
         per_file_ignores={"src/legacy/*": ["D100", "D103"]},
         black_target_versions=["py312", "py313", "py314", "py315"],
     )
@@ -53,6 +57,8 @@ def test_load_config_defaults_optional_keys(tmp_path: Path) -> None:
         paths=["src"],
         test_paths=[],
         exclude=[],
+        coverage_source=[],
+        coverage_omit=[],
         per_file_ignores={},
         black_target_versions=[],
     )
@@ -69,13 +75,21 @@ def test_load_config_without_pyproject_names_the_file(tmp_path: Path) -> None:
     [
         ("[tool.max-lint\n", "is not valid TOML"),
         ("[tool.black]\nline-length = 100\n", r"no \[tool.max-lint\] table"),
-        ('[tool.max-lint]\npaths = ["src"]\ncoverage-source = ["src"]\n', "unknown key 'coverage-source'"),
+        ('[tool.max-lint]\npaths = ["src"]\nfail-under = 90\n', "unknown key 'fail-under'"),
         ('[tool.max-lint]\npaths = ["src"]\n"a\\nb" = 1\n', r"unknown key 'a\\nb' in"),
         ('[tool.max-lint]\ntest-paths = ["tests"]\n', "missing 'paths'"),
         ('[tool.max-lint]\npaths = "src"\n', "'paths' in .* must be a list of non-empty strings"),
         ("[tool.max-lint]\npaths = []\n", "'paths' in .* is empty"),
         ('[tool.max-lint]\npaths = ["src"]\ntest-paths = "tests"\n', "'test-paths' in .* must be a list of non-empty strings"),
         ('[tool.max-lint]\npaths = ["src"]\nexclude = ["build", 1]\n', "'exclude' in .* must be a list of non-empty strings"),
+        (
+            '[tool.max-lint]\npaths = ["src"]\ncoverage-source = "src"\n',
+            "'coverage-source' in .* must be a list of non-empty strings",
+        ),
+        (
+            '[tool.max-lint]\npaths = ["src"]\ncoverage-omit = ["", "a"]\n',
+            "'coverage-omit' in .* must be a list of non-empty strings",
+        ),
         ('[tool.max-lint]\npaths = ["src"]\nper-file-ignores = ["D100"]\n', "'per-file-ignores' in .* must be a table"),
         (
             '[tool.max-lint]\npaths = ["src"]\nper-file-ignores = { "a.py" = "D100" }\n',
