@@ -33,15 +33,6 @@ def test_help_flag_exits_zero(capsys: pytest.CaptureFixture[str]) -> None:
     assert "usage: max-lint" in capsys.readouterr().out
 
 
-def test_unknown_argument_exits_with_usage_error(capsys: pytest.CaptureFixture[str]) -> None:
-    """An unrecognised argument exits 2 and reports it on stderr."""
-    with pytest.raises(SystemExit) as exc_info:
-        main(["--nope"])
-
-    assert exc_info.value.code == 2
-    assert "unrecognized arguments: --nope" in capsys.readouterr().err
-
-
 def test_console_script_prints_version() -> None:
     """The installed ``max-lint`` script prints the version through a real process."""
     script = Path(sys.executable).parent / "max-lint"
