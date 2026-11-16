@@ -83,6 +83,7 @@ def test_load_config_without_pyproject_names_the_file(tmp_path: Path) -> None:
         ),
         ('[tool.max-lint]\npaths = ["src", "lib"]\n', "'paths' in .* lists 'lib', which does not exist"),
         ('[tool.max-lint]\npaths = ["src"]\ntest-paths = ["test"]\n', "'test-paths' in .* lists 'test', which does not exist"),
+        ('[project]\nrequires-python = 3.13\n\n[tool.max-lint]\npaths = ["src"]\n', "'requires-python' in .* must be a string"),
     ],
 )
 def test_load_config_rejects_invalid_settings(tmp_path: Path, text: str, message: str) -> None:

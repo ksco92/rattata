@@ -30,7 +30,7 @@ def python_files(config: Config) -> list[str]:
         filename_patterns=["*.py"],
         exclude=normalize_paths([*BUNDLED_EXCLUDE, *config.exclude]),
     )
-    # ponytail: every file goes on one command line; batch the list if a project reaches the OS argument limit.
+    # Every file goes on one command line; batch the list if a project reaches the OS argument limit.
     result = sorted(set(found))
 
     if not result:

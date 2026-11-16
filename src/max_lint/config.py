@@ -75,6 +75,9 @@ def load_config(pyproject: Path) -> Config:
             if not (pyproject.parent / path).exists():
                 raise ConfigError(f"'{key}' in [tool.max-lint] lists '{path}', which does not exist; fix or remove it.")
 
+    if not isinstance(document.get("project", {}).get("requires-python", ""), str):
+        raise ConfigError("'requires-python' in [project] must be a string, for example \">=3.13\".")
+
     return Config(
         paths=table["paths"],
         test_paths=table.get("test-paths", []),

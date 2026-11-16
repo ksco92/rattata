@@ -61,7 +61,7 @@ def test_bundled_style_accepts_long_line_and_reports_missing_module_docstring(
     "overrides",
     [
         {
-            "pyproject.toml": '[tool.black]\nline-length = 80\nskip-string-normalization = true\n\n[tool.isort]\nprofile = "google"\n',
+            "pyproject.toml": '[tool.black]\nline-length = 80\n\n[tool.isort]\nprofile = "google"\n',
             ".flake8": "[flake8]\nmax-line-length = 80\nextend-ignore = D100\n",
         },
         {"setup.cfg": "[flake8]\nmax-line-length = 80\nextend-ignore = D100\n\n[isort]\nprofile = google\n"},
@@ -197,6 +197,26 @@ def test_check_mode_reports_unformatted_file_without_writing(
     assert (tmp_path / "src/mod.py").read_bytes() == original
 
 
+def test_check_mode_reports_unsorted_imports_without_writing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    """The file is black-clean, sits in a directory isort skips by default, and has an unused import for flake8."""
+    original = b'"""Fixture module."""\n\nimport sys\nimport os\nimport json\n\nVALUE = (os.sep, sys.platform)\n'
+    write_files(tmp_path, {"pyproject.toml": '[tool.max-lint]\npaths = ["src"]\n'})
+    (tmp_path / "src/build").mkdir(parents=True)
+    (tmp_path / "src/build/mod.py").write_bytes(original)
+
+    exit_code, output = lint(tmp_path, monkeypatch, capfd, "--check")
+
+    assert exit_code == 1
+    assert "1 file would be left unchanged." in output
+    assert "ERROR: <root>/src/build/mod.py Imports are incorrectly sorted and/or formatted." in output
+    assert "F401" not in output
+    assert (tmp_path / "src/build/mod.py").read_bytes() == original
+
+
 @pytest.mark.parametrize(
     ("extra_import", "expected_exit"),
     [("", 0), ("import json\n", 1)],
@@ -256,6 +276,7 @@ def test_exclude_removes_file_from_every_tool(
         {
             "pyproject.toml": '[tool.max-lint]\npaths = ["app"]\nexclude = ["app/gen*"]\n',
             "app/generated/models.py": broken,
+            "app/.venv/lib/site.py": broken,
             "app/ok.py": FORMATTED_MODULE,
         },
     )
@@ -264,6 +285,7 @@ def test_exclude_removes_file_from_every_tool(
 
     assert exit_code == 0
     assert (tmp_path / "app/generated/models.py").read_text() == broken
+    assert (tmp_path / "app/.venv/lib/site.py").read_text() == broken
 
 
 def test_path_outside_project_is_linted(
