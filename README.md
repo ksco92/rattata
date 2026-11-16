@@ -16,25 +16,61 @@ uv sync
 
 ## Usage
 
-A project declares what it owns in a `[tool.max-lint]` table of its `pyproject.toml`:
+A project declares what it owns in a `[tool.max-lint]` table of its `pyproject.toml`. This project:
 
 ```toml
+# pyproject.toml
 [project]
+name = "inventory"
 requires-python = ">=3.13"
 
 [tool.max-lint]
-paths = ["src", "../examples/quickstart"]
+paths = ["src"]
 test-paths = ["tests"]
-exclude = ["src/inventory/generated"]
-per-file-ignores = { "src/inventory/legacy.py" = ["D103"] }
 ```
 
-- `paths` (required): source paths. Paths are relative to `pyproject.toml` and may point outside its directory.
-- `test-paths`: test paths, exempt from the pydoclint `DOC` codes.
-- `exclude`: extra flake8-style exclude patterns, removed from black, isort and flake8 alike.
-- `per-file-ignores`: path glob to a list of flake8 codes, added to the bundled `*/__init__.py: D104, F401`.
+```python
+# src/inventory/__init__.py
+"""Inventory tracking."""
+```
 
-A missing table or `paths`, a value of the wrong type or an unknown key exits with status 2 and a one-line message naming the key.
+```python
+# src/inventory/stock.py
+"""Stock levels per item."""
+
+
+def restock(levels: dict[str, int], item: str, count: int) -> dict[str, int]:
+    """
+    Return a copy of ``levels`` with ``count`` more of ``item``.
+
+    :param levels: current stock per item.
+    :return: the updated stock.
+    """
+    return {**levels, item: levels.get(item, 0)+count}
+```
+
+```python
+# tests/test_stock.py
+"""Tests for stock levels."""
+
+from inventory.stock import restock
+
+
+def test_restock_adds_to_existing_item() -> None:
+    """Restocking an item adds to its count."""
+    assert restock({'apple': 1}, 'apple', 2) == {'apple': 3}
+```
+
+The table takes these keys:
+
+- `paths` (required): source paths.
+- `test-paths`: test paths, exempt from the pydoclint `DOC` codes.
+- `exclude`: extra flake8-style exclude patterns such as `"src/inventory/generated"`, removed from black, isort and flake8 alike.
+- `per-file-ignores`: a table of glob to flake8 codes, such as `{ "src/inventory/legacy.py" = ["D103"] }`. A glob matches a file's path relative to `pyproject.toml`, and `*` also matches `/`.
+
+Every path in `paths` and `test-paths` must exist; paths are relative to `pyproject.toml` and may point outside its directory. Ignored codes add up per file: every `__init__.py` ignores `D104` and `F401`, every file under a test path ignores `DOC`, and every `per-file-ignores` entry whose glob matches adds its codes.
+
+Exit status 2 and a one-line message on stderr mean a configuration error: a missing or invalid `pyproject.toml`, no `[tool.max-lint]` table, a missing or empty `paths`, a path that does not exist, a value of the wrong type, an unknown key, a code that is not capital letters optionally followed by digits, no Python files to lint, or a file that needs ignored codes but has whitespace, `:` or `,` in its path. The message names the file, table, key or path at fault.
 
 Run the commands from the directory that holds `pyproject.toml`. Until max-lint is published, run it from a checkout with `uv run --project /path/to/rattata max-lint lint`.
 
@@ -46,18 +82,18 @@ would reformat src/inventory/stock.py
 would reformat tests/test_stock.py
 
 Oh no! 💥 💔 💥
-2 files would be reformatted, 2 files would be left unchanged.
+2 files would be reformatted, 1 file would be left unchanged.
 ```
 
 `max-lint lint` rewrites the files with black, then isort, then runs flake8:
 
 ```console
 $ max-lint lint
-reformatted src/inventory/stock.py
 reformatted tests/test_stock.py
+reformatted src/inventory/stock.py
 
 All done! ✨ 🍰 ✨
-2 files reformatted, 2 files left unchanged.
+2 files reformatted, 1 file left unchanged.
 src/inventory/stock.py:4:1: DOC101 Function `restock`: Docstring contains fewer arguments than in function signature.
 src/inventory/stock.py:4:1: DOC103 Function `restock`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [count: int, item: str].
 ```
