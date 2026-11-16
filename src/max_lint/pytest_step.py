@@ -35,7 +35,10 @@ def pytest_command(config: Config, scratch: Path) -> list[str]:
     text = (STYLE / "coverage.toml").read_text(encoding="utf-8")
 
     if config.coverage_omit:
-        omit = ", ".join(json.dumps(pattern, ensure_ascii=False) for pattern in config.coverage_omit)
+        omit = ", ".join(
+            json.dumps(pattern, ensure_ascii=False).replace("\x7f", "\\u007f").replace("$", "$$")
+            for pattern in config.coverage_omit
+        )
         text += f"\n[run]\nomit = [{omit}]\n"
 
     coverage_config.write_text(text, encoding="utf-8")

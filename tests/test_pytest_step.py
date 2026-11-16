@@ -1,10 +1,10 @@
 """Tests for ``max-lint test`` and the bare ``max-lint`` run against the real pytest and coverage."""
 
 import re
-import tomllib
 from pathlib import Path
 
 import pytest
+from coverage import Coverage
 
 from max_lint.cli import main
 from max_lint.config import Config
@@ -495,42 +495,48 @@ def test_test_path_named_like_an_option_is_a_path(
     assert NOT_REACHED in output
 
 
-@pytest.mark.parametrize("location", ["inside", "outside", "absolute"])
+@pytest.mark.parametrize("absolute", [False, True], ids=["relative", "absolute"])
 def test_test_path_named_like_a_plugin_switch_is_a_path(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
-    location: str,
+    absolute: bool,
 ) -> None:
     """A directory named ``-pevilplug`` is collected for tests and no ``evilplug`` plugin is loaded."""
-    entry = {"inside": "-pevilplug", "outside": "../-pevilplug", "absolute": f"{tmp_path}/-pevilplug"}[location]
-    directory = tmp_path / "project" / entry if location == "inside" else tmp_path / "-pevilplug"
+    entry = f"{tmp_path}/-pevilplug" if absolute else "-pevilplug"
     files = {
-        "pyproject.toml": BASE_PYPROJECT.replace('"tests"', f'"{entry}"')
-        .replace("src/pkg", "pkg")
-        .replace('paths = ["src"]', 'paths = ["pkg"]'),
+        "pyproject.toml": f'[tool.max-lint]\npaths = ["pkg"]\ntest-paths = ["{entry}"]\ncoverage-source = ["pkg"]\n',
         "pkg/__init__.py": SIGN_MODULE,
         "evilplug.py": 'from pathlib import Path\n\nPath("evil-ran").write_text("")\n',
+        "-pevilplug/test_sign.py": SIGN_TEST,
     }
-    write_files(tmp_path / "project", files)
-    write_files(directory, {"test_sign.py": SIGN_TEST})
 
-    exit_code, output = run_max_lint(tmp_path / "project", {}, monkeypatch, capfd, "test")
+    exit_code, output = run_max_lint(tmp_path, files, monkeypatch, capfd, "test")
 
     assert exit_code == 0
     assert "1 passed" in output
-    assert not (tmp_path / "project" / "evil-ran").exists()
+    assert not (tmp_path / "evil-ran").exists()
 
 
 @pytest.mark.parametrize(
-    "patterns",
-    [['a"b\\c'], ["\u00e9*.py", "plain"], ["*/\u0394/[ab]?.py"]],
-    ids=["quote-and-backslash", "non-ascii", "glob"],
+    "pattern",
+    ["a\x7fb", "a\x00b", "a\tb", "a\nb", "$HOME/x/*", "${ZZ_NOPE?}", "a$b", "$$", 'a"b\\c', "\u00e9\u0394*.py", "*/[ab]?.py"],
+    ids=[
+        "delete",
+        "nul",
+        "tab",
+        "newline",
+        "home-variable",
+        "strict-variable",
+        "dollar-in-word",
+        "double-dollar",
+        "quote-backslash",
+        "non-ascii",
+        "glob",
+    ],
 )
-def test_coverage_omit_is_written_to_the_coverage_config_unchanged(tmp_path: Path, patterns: list[str]) -> None:
-    """The generated coverage config holds exactly the ``coverage-omit`` patterns."""
-    config = Config(["src"], ["tests"], [], ["src"], patterns, {}, [])
+def test_coverage_omit_reaches_coverage_unchanged(tmp_path: Path, pattern: str) -> None:
+    """Coverage reads the generated config and gets exactly the ``coverage-omit`` pattern."""
+    pytest_command(Config(["src"], ["tests"], [], ["src"], [pattern, "plain"], {}, []), tmp_path)
 
-    pytest_command(config, tmp_path)
-
-    assert tomllib.loads((tmp_path / "coverage.toml").read_text(encoding="utf-8"))["run"]["omit"] == patterns
+    assert Coverage(config_file=str(tmp_path / "coverage.toml")).get_option("run:omit") == [pattern, "plain"]

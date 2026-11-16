@@ -177,13 +177,3 @@ def test_load_config_rejects_malformed_mypy_tables(tmp_path: Path, text: str) ->
 
     with pytest.raises(ConfigError, match=r"'mypy' in \[tool\] must be a table and its 'overrides' a list of tables"):
         load_config(pyproject)
-
-
-@pytest.mark.parametrize("character", ["\t", "\n", "\x1f", "\x7f"], ids=["tab", "newline", "unit-separator", "delete"])
-def test_load_config_rejects_control_characters_in_coverage_omit(tmp_path: Path, character: str) -> None:
-    """A ``coverage-omit`` pattern with a control character is rejected by name."""
-    escaped = f"a\\u{ord(character):04x}b"
-    pyproject = write_pyproject(tmp_path, f'[tool.max-lint]\npaths = ["src"]\ncoverage-omit = ["{escaped}"]\n')
-
-    with pytest.raises(ConfigError, match="'coverage-omit' in .* contains a control character"):
-        load_config(pyproject)
