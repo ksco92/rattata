@@ -1,6 +1,5 @@
 """Tests for the comma step against the real add-trailing-comma, run in process so its branches are measured."""
 
-import resource
 import subprocess
 import sys
 from pathlib import Path
@@ -8,6 +7,9 @@ from pathlib import Path
 import pytest
 
 from max_lint.commas import main
+
+if sys.platform != "win32":
+    import resource
 
 
 @pytest.mark.parametrize(
@@ -38,6 +40,7 @@ def test_comma_step_writes_only_rewrites_that_keep_the_tree(tmp_path: Path, sour
     assert target.read_bytes() == expected
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="file-size limits need the POSIX resource module")
 def test_comma_step_stops_with_the_error_when_a_write_fails(tmp_path: Path) -> None:
     """
     A write cut short by a file-size limit ends the step with a non-zero exit and the error on stderr.

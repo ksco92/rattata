@@ -1362,7 +1362,7 @@ def test_one_write_run_adds_the_trailing_commas_black_leaves_out(
     capfd: pytest.CaptureFixture[str],
 ) -> None:
     """
-    Check mode writes nothing, one write run passes, and a second write run changes no byte.
+    Check mode writes nothing, one write run passes with one black summary, and a second write run changes no byte.
 
     :param tmp_path: Project directory the fixture files are written to.
     :param monkeypatch: Used to run max-lint from the project directory.
@@ -1373,11 +1373,12 @@ def test_one_write_run_adds_the_trailing_commas_black_leaves_out(
 
     check, _ = lint(tmp_path, monkeypatch, capfd, "--check")
     unchanged = module.read_text() == MISSING_COMMAS
-    write, _ = lint(tmp_path, monkeypatch, capfd)
+    write, output = lint(tmp_path, monkeypatch, capfd)
     settled = module.read_bytes()
     lint(tmp_path, monkeypatch, capfd)
 
     assert (check, unchanged, write) == (1, True, 0)
+    assert output.count("All done!") == 1
     assert module.read_bytes() == settled
 
 
