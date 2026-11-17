@@ -906,7 +906,7 @@ def test_mypy_rejects_any_from_an_untyped_library_only_where_it_types_a_name(
     result, output = lint(tmp_path, monkeypatch, capfd, "--check")
 
     assert result == exit_code
-    assert ("becomes \"Any\" due to an unfollowed import" in output) == bool(exit_code)
+    assert ('becomes "Any" due to an unfollowed import' in output) == bool(exit_code)
 
 
 @pytest.mark.parametrize(("overrides", "exit_code"), [(UNREACHABLE_OVERRIDE, 1), ("", 0)], ids=["with-override", "without"])
