@@ -1556,8 +1556,13 @@ def test_file_that_is_not_utf8_and_has_no_coding_line_stops_the_run_at_black(
 
 @pytest.mark.parametrize(
     "source",
-    [WITH_COMMA, '"""Doc."""\n\nN = f"{max(\n    1,\n    2,\n)}"\n', f'"""Doc."""\n\n{WITH_ITEM}', DOC_ITEMS + WITH_ITEM],
-    ids=["nothing-missing", "layout-only", "comma-removed", "comma-removed-and-added"],
+    [
+        WITH_COMMA,
+        '"""Doc."""\n\nN = f"{max(\n    1,\n    2,\n)}"\n',
+        f'"""Doc."""\n\n{WITH_ITEM}',
+        DOC_ITEMS + LONG_ITEMS + WITH_ITEM,
+    ],
+    ids=["nothing-missing", "layout-only", "comma-removed", "comma-removed-and-two-added"],
 )
 def test_file_that_gains_no_comma_is_not_written(
     tmp_path: Path,
