@@ -1381,6 +1381,26 @@ def test_one_write_run_adds_the_trailing_commas_black_leaves_out(
     assert module.read_bytes() == settled
 
 
+def test_check_mode_reports_a_missing_comma_and_writes_nothing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    """
+    flake8 reports the comma black leaves out, and the file keeps its bytes.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    """
+    write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT, "src/mod.py": DOC_ITEMS})
+
+    _, output = lint(tmp_path, monkeypatch, capfd, "--check")
+
+    assert (tmp_path / "src/mod.py").read_text() == DOC_ITEMS
+    assert flake8_codes(output) == ["src/mod.py:4:127: C812"]
+
+
 def test_multi_line_fstring_field_keeps_its_finding(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
