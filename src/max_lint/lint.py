@@ -35,7 +35,7 @@ def python_files(config: Config) -> list[str]:
     :param config: project settings; exclude patterns follow flake8's ``exclude`` matching.
     :return: paths relative to the current directory, sorted, with each file once under the first spelling found and
         entries that do not resolve to a regular file left out.
-    :raises ConfigError: when no Python file is left to lint.
+    :raises ConfigError: when no Python file is left to lint or one of them is the file ``-``.
     """
     found = expand_paths(
         paths=[*config.paths, *config.test_paths],
@@ -55,6 +55,11 @@ def python_files(config: Config) -> list[str]:
     if not result:
         raise ConfigError(
             "no Python files found under 'paths' and 'test-paths' in [tool.max-lint]; point them at Python sources.",
+        )
+
+    if "-" in result:
+        raise ConfigError(
+            "'-' in [tool.max-lint] names a file that black and flake8 read as standard input; rename the file.",
         )
 
     return result

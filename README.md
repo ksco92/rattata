@@ -194,7 +194,7 @@ The `[tool.max-lint]` table takes these keys and no others:
 
 | Key | Type | Required | Meaning |
 | --- | --- | --- | --- |
-| `paths` | list of strings | yes | Source paths to format, lint and type-check. |
+| `paths` | list of strings | yes | Source paths to format, lint and type-check; a file named `-` in the project root is rejected with exit status 2, because black and flake8 read `-` as standard input. |
 | `test-paths` | list of strings | no | Test paths: formatted, linted and type-checked like `paths`, and run by pytest, so the test step needs at least one. |
 | `coverage-source` | list of strings | no | Packages or directories to measure, as pytest-cov's `--cov` takes them; the test step needs at least one. |
 | `coverage-omit` | list of strings | no | Glob patterns of files to leave out of the measurement; one not starting with `*` is relative to `pyproject.toml`. |
