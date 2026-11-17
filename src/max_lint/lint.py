@@ -1,4 +1,4 @@
-"""Build the black, isort, flake8 and mypy commands that apply the bundled style."""
+"""Build the add-trailing-comma, black, isort, flake8 and mypy commands that apply the bundled style."""
 
 import contextlib
 import os
@@ -95,10 +95,10 @@ def per_file_ignores(config: Config, targets: list[str]) -> str:
 
 def lint_commands(config: Config, check: bool, scratch: Path) -> list[list[str]]:
     """
-    Return the black, isort, flake8 and mypy commands, in the order they run.
+    Return the lint commands in the order they run: black, add-trailing-comma and a quiet black in write mode, then isort, flake8 and mypy.
 
     :param config: project settings.
-    :param check: run black and isort in their check modes, which write nothing.
+    :param check: run black and isort in their check modes and leave out add-trailing-comma, so nothing is written.
     :param scratch: directory outside the project for the generated flake8 config; it must outlive the commands.
     :return: one argument list per tool, each run with the current interpreter.
     """
@@ -118,6 +118,10 @@ def lint_commands(config: Config, check: bool, scratch: Path) -> list[list[str]]
     flake8 = [sys.executable, "-m", "flake8", "--config", str(STYLE / "flake8.ini"), "--append-config", str(ignores)]
 
     commands = [[*command, "--", *targets] for command in (black, isort, flake8)]
+
+    if not check:
+        commands[1:1] = [[sys.executable, "-m", "max_lint.commas", *targets], [*black, "--quiet", "--", *targets]]
+
     mypy = [sys.executable, "-m", "mypy", "--config-file", str(root / "pyproject.toml")]
     mypy += ["--python-executable", sys.executable, "--disallow-untyped-defs", "--warn-redundant-casts", "--no-implicit-optional"]
     mypy += ["--disallow-any-unimported", "--disallow-any-generics", "--disallow-any-explicit", "--warn-return-any"]

@@ -1,8 +1,10 @@
 """Tests for ``max-lint lint`` against the real black, isort and flake8."""
 
+import codecs
 import http.server
 import os
 import re
+import runpy
 import signal
 import subprocess
 import sys
@@ -105,6 +107,20 @@ class Box:
 '''
 UNTYPED_FUNCTION = '"""Fixture module."""\n\n\ndef run():  # noqa: ANN201\n    """Do nothing."""\n'
 MISTYPED_VALUE = '"""Fixture module."""\n\nVALUE: int = "text"\n'
+LONG = "a" * 120
+MISSING_COMMAS = (
+    '"""Fixture module."""\n\n'
+    f'ERROR = ValueError(\n    "{LONG}"\n)\nITEMS = [\n    "{LONG}"\n]\nMAPPING = {{\n    "k": "{LONG}"\n}}\n'
+    f'KEYWORD = dict(\n    key="{LONG}"\n)\nSTAR = max(\n    *["{LONG}"]\n)\nNESTED = list(\n    list(\n        "{LONG}"\n    )\n)\n'
+    f'LINE = ValueError("{LONG}")\n\n\ndef _pick[\n    T{LONG[:60]},\n    U{LONG[:60]}\n](first: int, second: int) -> int:\n    return first\n'
+)
+NESTED_SPEC = '"""Fixture module."""\n\nA = 1\nB = 2\nVALUE = f"{A:{\n    B\n}}"\n'
+TRIPLE_QUOTED_SPEC = '"""Fixture module."""\n\nA = 5\nB = 3\nVALUE = f"""\n{A:{\n  B\n}}\n"""\n'
+TEMPLATE_CALL = '"""Fixture module."""\n\nVALUE = t"{max(\n    1,\n    2\n)}"\n'
+LONG_ITEMS = f'ITEMS = [\n    "{LONG}"\n]\n'
+DOC_ITEMS = f'"""Doc."""\n\n{LONG_ITEMS}'
+WITH_COMMA = DOC_ITEMS.replace('"\n]', '",\n]')
+WITH_ITEM = 'with (open("a") as f,):\n    pass\n'
 MYPY_ERROR = "src/mod.py:4: error: Function is missing a return type annotation  [no-untyped-def]"
 UNREACHABLE_BRANCH = (
     '"""Fixture module."""\n\n\ndef run(value: int) -> None:\n    """\n    Print a string.\n\n    :param value: Printed when it is a string.\n    """\n'
@@ -329,7 +345,7 @@ def test_lint_separates_first_party_imports(
         (
             ">=3.8",
             'with open("the_first_file_with_a_rather_long_name.txt") as first_handle, open(\n'
-            '    "the_second_file_with_a_long_name.txt"\n'
+            '    "the_second_file_with_a_long_name.txt",\n'
             ") as second_handle:\n",
         ),
         (
@@ -667,7 +683,16 @@ def test_path_outside_project_is_linted(
 
 @pytest.mark.parametrize(
     "planted",
-    ["black.py", "click.py", "isort/__init__.py", "flake8/__init__.py", "mypy.py", "pathspec/__init__.py"],
+    [
+        "black.py",
+        "click.py",
+        "isort/__init__.py",
+        "flake8/__init__.py",
+        "mypy.py",
+        "pathspec/__init__.py",
+        "add_trailing_comma.py",
+        "tokenize_rt.py",
+    ],
 )
 def test_project_modules_named_like_tools_are_not_imported(
     tmp_path: Path,
@@ -1326,3 +1351,303 @@ def test_mypy_checks_a_file_whose_name_starts_with_at_sign(
 
     assert exit_code == 1
     assert '@x.py:3: error: Incompatible types in assignment (expression has type "str", variable has type "int")' in output
+
+
+def test_one_write_run_adds_the_trailing_commas_black_leaves_out(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    """
+    Check mode writes nothing, one write run passes with one black summary, and a second write run changes no byte.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    """
+    module = tmp_path / "src/mod.py"
+    write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT, "src/mod.py": MISSING_COMMAS})
+
+    check, _ = lint(tmp_path, monkeypatch, capfd, "--check")
+    unchanged = module.read_text() == MISSING_COMMAS
+    write, output = lint(tmp_path, monkeypatch, capfd)
+    settled = module.read_bytes()
+    lint(tmp_path, monkeypatch, capfd)
+
+    assert (check, unchanged, write) == (1, True, 0)
+    assert output.count("All done!") == 1
+    assert module.read_bytes() == settled
+
+
+def test_check_mode_reports_a_missing_comma_and_writes_nothing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    """
+    flake8 reports the comma black leaves out, and the file keeps its bytes.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    """
+    write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT, "src/mod.py": DOC_ITEMS})
+
+    _, output = lint(tmp_path, monkeypatch, capfd, "--check")
+
+    assert (tmp_path / "src/mod.py").read_text() == DOC_ITEMS
+    assert flake8_codes(output) == ["src/mod.py:4:127: C812"]
+
+
+def test_multi_line_fstring_field_keeps_its_finding(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    """
+    A container in a multi-line replacement field gets its inner comma and the field stays reported; on one line it does not.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    """
+    header = '"""Fixture module."""\n\n'
+    multi = header + 'NAME = f"{\n    [\n        1,\n        2\n    ]\n}"\n'
+    single = header + 'NAME = f"{[1, 2]}"\n'
+    write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT, "src/multi.py": multi, "src/single.py": single})
+
+    _, output = lint(tmp_path, monkeypatch, capfd)
+
+    assert [code for code in flake8_codes(output) if "C81" in code] == ["src/multi.py:7:6: C812"]
+    assert (tmp_path / "src/multi.py").read_text() == multi.replace("2\n", "2,\n")
+
+
+@pytest.mark.parametrize(
+    ("source", "row"),
+    [
+        pytest.param(NESTED_SPEC, 9, id="nested-spec"),
+        pytest.param(TRIPLE_QUOTED_SPEC, 11, id="triple-quoted-spec"),
+        pytest.param(
+            TEMPLATE_CALL,
+            8,
+            id="template-call",
+            marks=pytest.mark.skipif(sys.version_info < (3, 14), reason="template strings need Python 3.14"),
+        ),
+        pytest.param('"""Fixture module."""\n\nVALUE = f"{max(\n    1,\n    2,\n)=}"\n', 8, id="debug-field"),
+    ],
+)
+def test_rewrite_that_changes_the_syntax_tree_is_not_written(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+    source: str,
+    row: int,
+) -> None:
+    """
+    A file whose rewrite would not parse, or would mean something else, keeps its bytes and every missing comma.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    :param source: Module text the comma step would rewrite, before a second missing comma is appended.
+    :param row: Row of the appended missing comma as flake8 reports it.
+    """
+    module = tmp_path / "src/mod.py"
+    content = (source + LONG_ITEMS).encode()
+    write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT})
+    module.parent.mkdir()
+    module.write_bytes(content)
+    before = repr(runpy.run_path(str(module))["VALUE"])
+
+    _, output = lint(tmp_path, monkeypatch, capfd)
+
+    assert module.read_bytes() == content
+    assert repr(runpy.run_path(str(module))["VALUE"]) == before
+    assert f"src/mod.py:{row}:127: C812" in flake8_codes(output)
+
+
+def test_file_with_a_byte_order_mark_gets_its_commas_and_keeps_the_mark(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    """
+    The missing comma is added and the mark stays first, before a bracket on the first line.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    """
+    module = tmp_path / "src/mod.py"
+    write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT})
+    module.parent.mkdir()
+    module.write_bytes(codecs.BOM_UTF8 + f"x = [1]\n{LONG_ITEMS}".encode())
+
+    lint(tmp_path, monkeypatch, capfd)
+
+    assert module.read_bytes() == codecs.BOM_UTF8 + f"x = [1]\n{LONG_ITEMS}".replace('"\n]', '",\n]').encode()
+
+
+def test_read_only_file_keeps_its_finding_and_the_run_continues(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    """
+    The file is left as it was and flake8 reports its missing comma, while another file gains its comma.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    """
+    stuck = tmp_path / "src/stuck.py"
+    write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT, "src/ordinary.py": DOC_ITEMS, "src/stuck.py": DOC_ITEMS})
+    stuck.chmod(0o444)
+
+    _, output = lint(tmp_path, monkeypatch, capfd)
+
+    assert stuck.read_text() == DOC_ITEMS
+    assert (tmp_path / "src/ordinary.py").read_text() == WITH_COMMA
+    assert [code for code in flake8_codes(output) if "C81" in code] == ["src/stuck.py:4:127: C812"]
+
+
+def test_file_that_is_not_utf8_and_has_no_coding_line_stops_the_run_at_black(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    """
+    The file keeps its bytes, and black fails on it before the comma step runs.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    """
+    write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT, "src/ordinary.py": DOC_ITEMS})
+    (tmp_path / "src/bad.py").write_bytes(b'VALUE = "\xff"\n')
+
+    exit_code, output = lint(tmp_path, monkeypatch, capfd)
+
+    assert exit_code == 1
+    assert (tmp_path / "src/bad.py").read_bytes() == b'VALUE = "\xff"\n'
+    assert (tmp_path / "src/ordinary.py").read_text() == DOC_ITEMS
+    assert "error: cannot format src/bad.py: invalid or missing encoding declaration" in output
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        WITH_COMMA,
+        '"""Doc."""\n\nN = f"{max(\n    1,\n    2,\n)}"\n',
+        f'"""Doc."""\n\n{WITH_ITEM}',
+        DOC_ITEMS + LONG_ITEMS + WITH_ITEM,
+    ],
+    ids=["nothing-missing", "layout-only", "comma-removed", "comma-removed-and-two-added"],
+)
+def test_file_that_gains_no_comma_is_not_written(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+    source: str,
+) -> None:
+    """
+    The file keeps its bytes and modification time and reports the same flake8 codes after a write run as under check mode.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    :param source: Module whose rewrite would insert no comma, or would also change something else.
+    """
+    module = tmp_path / "src/mod.py"
+    write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT, "src/mod.py": source})
+    os.utime(module, ns=(10**9, 10**9))
+
+    _, check = lint(tmp_path, monkeypatch, capfd, "--check")
+    _, write = lint(tmp_path, monkeypatch, capfd)
+
+    assert (module.read_text(), module.stat().st_mtime_ns) == (source, 10**9)
+    assert flake8_codes(write) == flake8_codes(check)
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        b'"""Doc."""\n\n# fmt: off\nMATRIX = [1, 0,\n          0, 1]\n# fmt: on\n',
+        f'# coding: latin-1\n"""Doc \xe9."""\n\n{LONG_ITEMS}'.encode(),
+        b"# a\rB = 1  # coding: iso2022_jp\nV = [1,\n    2]  # fmt\x1b(B: skip\n",
+        b'"""Doc."""\n\nX = 1\r# fmt: off\nV = [1,\n    2]\n',
+    ],
+    ids=["fmt-off", "latin-1-valid-utf-8", "bare-cr-iso2022-jp-fmt-skip", "bare-cr-fmt-off"],
+)
+def test_file_that_opts_out_of_black_or_is_not_read_alike_by_every_reader_is_left_alone(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+    content: bytes,
+) -> None:
+    """
+    The file keeps its bytes and its flake8 codes, while another file in the same run gains its comma.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    :param content: Bytes of a module with a black directive, another declared encoding or a bare carriage return.
+    """
+    module = tmp_path / "src/mod.py"
+    write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT, "src/ordinary.py": DOC_ITEMS})
+    module.write_bytes(content)
+
+    _, check = lint(tmp_path, monkeypatch, capfd, "--check")
+    _, write = lint(tmp_path, monkeypatch, capfd)
+
+    assert module.read_bytes() == content
+    assert (tmp_path / "src/ordinary.py").read_text() == WITH_COMMA
+    assert [code for code in flake8_codes(write) if "mod.py" in code] == [
+        code for code in flake8_codes(check) if "mod.py" in code
+    ]
+
+
+@pytest.mark.parametrize("line", ['X = "a;fmt: off;b"\n', 'X = f"# fmt: off{1}"\n'], ids=["string", "f-string"])
+def test_directive_text_outside_a_comment_does_not_stop_the_step(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+    line: str,
+) -> None:
+    """
+    A file whose string holds directive text gains its comma.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    :param line: Statement holding directive text in a string.
+    """
+    write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT, "src/mod.py": f'"""Doc."""\n\n{line}{LONG_ITEMS}'})
+
+    lint(tmp_path, monkeypatch, capfd)
+
+    assert (tmp_path / "src/mod.py").read_text() == f'"""Doc."""\n\n{line}{LONG_ITEMS}'.replace('"\n]', '",\n]')
+
+
+def test_call_split_in_an_fstring_field_moves_when_the_file_gains_a_comma(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    """
+    The field is put on lines of its own and keeps a finding, while the file gains its missing comma.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    """
+    write_files(
+        tmp_path,
+        {"pyproject.toml": PLAIN_PYPROJECT, "src/mod.py": f'"""Doc."""\n\nN = f"{{max(\n    1,\n    2,\n)}}"\n{LONG_ITEMS}'},
+    )
+
+    _, output = lint(tmp_path, monkeypatch, capfd)
+
+    field = 'N = f"{\n    max(\n        1,\n        2,\n    )\n}"\n'
+    assert (tmp_path / "src/mod.py").read_text() == f'"""Doc."""\n\n{field}{LONG_ITEMS}'.replace('"\n]', '",\n]')
+    assert flake8_codes(output) == ["src/mod.py:7:6: C812"]

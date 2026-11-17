@@ -5,7 +5,7 @@
 
 **One command that runs black, isort, flake8, mypy and pytest with a single shared configuration. Every tool is pinned to an exact version.**
 
-Status (November 2026): max-lint is published on PyPI. The `lint` command runs black, isort, flake8 and mypy with the bundled style, the `test` command runs pytest with branch coverage and a coverage floor, and a bare `max-lint` runs both.
+Status (November 2026): max-lint is published on PyPI. The `lint` command runs the formatters and linters with the bundled style, the `test` command runs pytest with branch coverage and a coverage floor, and a bare `max-lint` runs both.
 
 ## Contents
 
@@ -90,7 +90,7 @@ Oh no! 💥 💔 💥
 2 files would be reformatted, 1 file would be left unchanged.
 ```
 
-`max-lint lint` rewrites the files with black, then isort, then runs flake8 and mypy:
+`max-lint lint` rewrites the files and then reports what is left:
 
 ```console
 $ uv run max-lint lint
@@ -198,15 +198,16 @@ The `[tool.max-lint]` table takes these keys and no others:
 | `test-paths` | list of strings | no | Test paths: formatted, linted and type-checked like `paths`, and run by pytest, so the test step needs at least one. |
 | `coverage-source` | list of strings | no | Packages or directories to measure, as pytest-cov's `--cov` takes them; the test step needs at least one. |
 | `coverage-omit` | list of strings | no | Glob patterns of files to leave out of the measurement; one not starting with `*` is relative to `pyproject.toml`. |
-| `exclude` | list of strings | no | Extra flake8-style exclude patterns such as `"src/inventory/generated"`, removed from black, isort and flake8 alike. |
+| `exclude` | list of strings | no | Extra flake8-style exclude patterns such as `"src/inventory/generated"`, removed from every lint step alike. |
 | `per-file-ignores` | table of glob to list of strings | no | Flake8 codes to ignore per file, such as `{ "src/inventory/legacy.py" = ["D103"] }`; a glob matches a file's path relative to `pyproject.toml`, and `*` also matches `/`. |
 
 Every path in `paths` and `test-paths` must exist; paths are relative to `pyproject.toml` and may point outside its directory. Ignored codes add up per file: `D104` and `F401` for every `__init__.py`, and the codes of every `per-file-ignores` entry whose glob matches.
 
 ## Bundled style
 
-The tools are black, isort, flake8, mypy, pytest, pytest-cov, pytest-socket and coverage, each pinned to an exact version in [pyproject.toml](https://github.com/ksco92/rattata/blob/main/pyproject.toml). The flake8 plugins are flake8-annotations, flake8-docstrings, flake8-rst-docstrings, flake8-commas, flake8-multiline-containers and pydoclint.
+The tools are add-trailing-comma, black, isort, flake8, mypy, pytest, pytest-cov, pytest-socket and coverage, each pinned to an exact version in [pyproject.toml](https://github.com/ksco92/rattata/blob/main/pyproject.toml). The flake8 plugins are flake8-annotations, flake8-docstrings, flake8-rst-docstrings, flake8-commas, flake8-multiline-containers and pydoclint.
 
+- add-trailing-comma adds missing trailing commas in write mode; it has no settings, and no project file changes what it does.
 - black and isort use line length 130, and isort uses `profile = "black"`. black targets the Python versions allowed by `requires-python`.
 - flake8 selects `ANN401` in addition to its defaults and ignores `E203` and `E501`. pydoclint checks Sphinx-style docstrings without argument types in the docstring and skips private functions and return types.
 - Docstrings are parsed with the `raw` and `include` directives disabled, so flake8 reports each use as `RST299`.
@@ -218,7 +219,7 @@ Settings for these tools in the project (`[tool.black]`, `[tool.isort]`, `.flake
 
 ## Project mypy and pytest settings
 
-mypy checks the files under `paths` and `test-paths`, the files black, isort and flake8 check. Apart from the locked settings, it reads the `[tool.mypy]` table and the `[[tool.mypy.overrides]]` entries of the project's `pyproject.toml`, such as `python_version` and `plugins`; a project with no `[tool.mypy]` table works, and no other mypy configuration file (`mypy.ini`, `setup.cfg`) is read:
+mypy checks the files under `paths` and `test-paths`, the files the other lint steps check. Apart from the locked settings, it reads the `[tool.mypy]` table and the `[[tool.mypy.overrides]]` entries of the project's `pyproject.toml`, such as `python_version` and `plugins`; a project with no `[tool.mypy]` table works, and no other mypy configuration file (`mypy.ini`, `setup.cfg`) is read:
 
 ```toml
 [tool.mypy]
@@ -230,7 +231,7 @@ A library without type information gets a stub package in the project's dev depe
 ## Commands and exit codes
 
 - `max-lint` runs the lint steps, then the test step; `max-lint --check` does the same with black and isort in their check modes.
-- `max-lint lint` formats with black and isort, then runs flake8 and mypy; `max-lint lint --check` rewrites no files.
+- `max-lint lint` formats with black, adds missing trailing commas with add-trailing-comma, formats with black again and with isort, then runs flake8 and mypy; `max-lint lint --check` rewrites no files, skips add-trailing-comma and reports missing commas through flake8.
 - `max-lint test` runs pytest with coverage.
 - `max-lint --help` prints the available commands and `max-lint --version` the installed version.
 
@@ -252,6 +253,9 @@ Exit status 2 and a one-line message on stderr mean a configuration error in `py
 - A `coverage-source` entry that matches nothing only prints a coverage warning and does not fail the run while another entry measures code.
 - Two directories under `paths` or `test-paths` that each hold a module of the same name without an `__init__.py`, such as `conftest.py` in `tests/unit` and `tests/integration`, make mypy report a duplicate module and the lint run fail; an `__init__.py` in each directory clears it.
 - A file named like a library module that mypy uses, such as `typing_extensions.py` in the project root or a test directory, makes the mypy step fail.
+- In an f-string or t-string, a call split over lines inside a replacement field keeps the `C812` for its missing comma, and so does a field whose closing `}` starts a line, including a nested format spec written that way; when add-trailing-comma adds a comma elsewhere in the file, it also rewrites a field holding a split call into that second shape. Put the field on one line.
+- When add-trailing-comma's rewrite would change what the file means (a format spec, a field ending in `=`, a t-string) or would do anything but insert commas, such as removing the comma from `with (open("a") as f,):`, write mode leaves the whole file as it was and adds none of its other missing commas, and flake8 reports them. Write that `with` as `with open("a") as f:`, put the field on one line, or write `f"{x = }"` as `f"x = {x!r}"`.
+- Write mode adds no trailing commas to a file that declares an encoding other than UTF-8, that has a bare carriage return (a `\r` with no line feed after it, as in old Mac line endings or one stray inside a comment) after black has run, that has a `# fmt: off`, `# fmt: skip` or `# yapf: disable` comment, or that cannot be opened for writing, and flake8 reports the missing commas in those files. In a file with a bare carriage return, replace each one with a line feed and write mode adds the commas. An error while writing a file stops the run with that error and can leave the file cut short. black stops the run before the comma step on a file it cannot decode, on a file it cannot read, and on a read-only file it would reformat.
 - `max-lint --check test` accepts `--check` without effect: the tests run and no formatting is checked.
 
 ## Contributing

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "max-lint"
-version = "0.8.0"
+version = "0.9.0"
 description = "One command that runs black, isort, flake8, mypy and pytest with a single shared configuration."
 readme = "README.md"
 requires-python = ">=3.13"
@@ -31,6 +31,7 @@ dependencies = [
     "flake8-annotations==3.3.1",
     "flake8-docstrings==1.7.0",
     "flake8-rst-docstrings==0.4.0",
+    "add-trailing-comma==4.0.0",
     "flake8-commas==4.0.0",
     "flake8-multiline-containers==0.0.19",
     "pydoclint[flake8]==0.12.0",
