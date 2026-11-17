@@ -42,7 +42,14 @@ def test_comma_step_writes_only_rewrites_that_insert_commas(tmp_path: Path, sour
 
 @pytest.mark.parametrize(
     ("raw", "fixed", "accepted"),
-    [(b"x", b"x;", False), (b"ab", b"a,", False), (b"a", b"a", False), (b"a\nb", b"a b,", True), (b"a,b", b"a,,b", True)],
+    [
+        (b"x", b"x;", False),
+        (b"ab", b"a,", False),
+        (b"a", b"a", False),
+        (b"ab", b"a,,", False),
+        (b"a\nb", b"a b,", True),
+        (b"a,b", b"a,,b", True),
+    ],
 )
 def test_inserts_only_commas(raw: bytes, fixed: bytes, accepted: bool) -> None:
     """
