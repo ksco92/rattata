@@ -207,7 +207,7 @@ Every path in `paths` and `test-paths` must exist; paths are relative to `pyproj
 
 The tools are add-trailing-comma, black, isort, flake8, mypy, pytest, pytest-cov, pytest-socket and coverage, each pinned to an exact version in [pyproject.toml](https://github.com/ksco92/rattata/blob/main/pyproject.toml). The flake8 plugins are flake8-annotations, flake8-docstrings, flake8-rst-docstrings, flake8-commas, flake8-multiline-containers and pydoclint.
 
-- add-trailing-comma has no settings, and no project file changes what it does.
+- add-trailing-comma adds missing trailing commas in write mode; it has no settings, and no project file changes what it does.
 - black and isort use line length 130, and isort uses `profile = "black"`. black targets the Python versions allowed by `requires-python`.
 - flake8 selects `ANN401` in addition to its defaults and ignores `E203` and `E501`. pydoclint checks Sphinx-style docstrings without argument types in the docstring and skips private functions and return types.
 - Docstrings are parsed with the `raw` and `include` directives disabled, so flake8 reports each use as `RST299`.
@@ -231,7 +231,7 @@ A library without type information gets a stub package in the project's dev depe
 ## Commands and exit codes
 
 - `max-lint` runs the lint steps, then the test step; `max-lint --check` does the same with black and isort in their check modes.
-- `max-lint lint` adds missing trailing commas with add-trailing-comma, formats with black and isort, then runs flake8 and mypy; `max-lint lint --check` rewrites no files, skips add-trailing-comma and reports missing commas through flake8.
+- `max-lint lint` formats with black, adds missing trailing commas with add-trailing-comma, formats with black again and with isort, then runs flake8 and mypy; `max-lint lint --check` rewrites no files, skips add-trailing-comma and reports missing commas through flake8.
 - `max-lint test` runs pytest with coverage.
 - `max-lint --help` prints the available commands and `max-lint --version` the installed version.
 
@@ -253,9 +253,8 @@ Exit status 2 and a one-line message on stderr mean a configuration error in `py
 - A `coverage-source` entry that matches nothing only prints a coverage warning and does not fail the run while another entry measures code.
 - Two directories under `paths` or `test-paths` that each hold a module of the same name without an `__init__.py`, such as `conftest.py` in `tests/unit` and `tests/integration`, make mypy report a duplicate module and the lint run fail; an `__init__.py` in each directory clears it.
 - A file named like a library module that mypy uses, such as `typing_extensions.py` in the project root or a test directory, makes the mypy step fail.
-- A multi-line replacement field of an f-string or t-string (a name, a subscript, a call, a container, a nested format spec) keeps its `C812`; put the field on one line. When add-trailing-comma's rewrite would change a format spec or a t-string, it leaves the whole file as it was and adds none of that file's other missing commas.
-- Write mode adds no trailing commas to a file that is not UTF-8, has bare carriage-return line endings and a bracket, or is not writable, and flake8 reports them. black stops the run first, with its own message, on a file that is not UTF-8 and has no coding declaration, and on a read-only file it would reformat.
-- Multi-line PEP 695 type parameters get their trailing comma but black then reflows the parameter list, so the first `max-lint lint` still reports `C812` and a second run settles it.
+- A replacement field of an f-string or t-string split over lines with its closing `}` at the start of a line, including a nested format spec written that way, keeps its `C812`; put the field on one line. When add-trailing-comma's rewrite would change a format spec or a t-string, it leaves the whole file as it was and adds none of that file's other missing commas.
+- Write mode adds no trailing commas to a file whose bytes are not valid UTF-8, that has bare carriage-return line endings and a bracket, or that cannot be opened for writing, and flake8 reports the missing commas in those files. An error while writing a file stops the run with that error and can leave the file cut short. black stops the run before the comma step on a file that is not UTF-8 and has no coding declaration, on a file it cannot read, and on a read-only file it would reformat.
 - `max-lint --check test` accepts `--check` without effect: the tests run and no formatting is checked.
 
 ## Contributing
