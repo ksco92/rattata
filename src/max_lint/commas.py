@@ -10,10 +10,9 @@ from add_trailing_comma._main import _fix_src  # type: ignore[import-untyped]
 
 def main(files: list[str]) -> None:
     """
-    Add missing trailing commas to ``files`` in place.
+    Write to each of ``files`` a rewrite that adds more than whitespace and parses, from bytes, to the file's own syntax tree.
 
-    A rewrite is written only when it parses, read as Python reads the file, to the same syntax tree as the file; a file that
-    cannot be read, decoded, processed or written is left byte-identical and the next file is processed.
+    A file that cannot be read, decoded, processed or opened for writing is left as it was; an error while writing stops the step.
 
     :param files: paths to rewrite.
     """
@@ -26,10 +25,15 @@ def main(files: list[str]) -> None:
             text = raw.removeprefix(mark).decode()
             fixed: bytes = mark + _fix_src(text).encode()
 
-            if fixed != raw and ast.dump(ast.parse(fixed)) == ast.dump(ast.parse(raw)):
-                path.write_bytes(fixed)
+            if b"".join(fixed.split()) == b"".join(raw.split()) or ast.dump(ast.parse(fixed)) != ast.dump(ast.parse(raw)):
+                continue
+
+            stream = path.open("wb")
         except Exception:
             continue
+
+        with stream:
+            stream.write(fixed)
 
 
 if __name__ == "__main__":
