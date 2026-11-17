@@ -219,7 +219,7 @@ Settings for these tools in the project (`[tool.black]`, `[tool.isort]`, `.flake
 
 ## Project mypy and pytest settings
 
-mypy checks the files under `paths` and `test-paths`, the files black, isort and flake8 check. Apart from the locked settings, it reads the `[tool.mypy]` table and the `[[tool.mypy.overrides]]` entries of the project's `pyproject.toml`, such as `python_version` and `plugins`; a project with no `[tool.mypy]` table works, and no other mypy configuration file (`mypy.ini`, `setup.cfg`) is read:
+mypy checks the files under `paths` and `test-paths`, the files the other lint steps check. Apart from the locked settings, it reads the `[tool.mypy]` table and the `[[tool.mypy.overrides]]` entries of the project's `pyproject.toml`, such as `python_version` and `plugins`; a project with no `[tool.mypy]` table works, and no other mypy configuration file (`mypy.ini`, `setup.cfg`) is read:
 
 ```toml
 [tool.mypy]
@@ -253,8 +253,8 @@ Exit status 2 and a one-line message on stderr mean a configuration error in `py
 - A `coverage-source` entry that matches nothing only prints a coverage warning and does not fail the run while another entry measures code.
 - Two directories under `paths` or `test-paths` that each hold a module of the same name without an `__init__.py`, such as `conftest.py` in `tests/unit` and `tests/integration`, make mypy report a duplicate module and the lint run fail; an `__init__.py` in each directory clears it.
 - A file named like a library module that mypy uses, such as `typing_extensions.py` in the project root or a test directory, makes the mypy step fail.
-- A multi-line replacement field of an f-string or t-string (a name, a subscript, a call, a container, a nested format spec) keeps its `C812`, and add-trailing-comma leaves a file as it was when its rewrite would change a format spec or a t-string; put the field on one line.
-- add-trailing-comma adds nothing to a file that is not UTF-8 or that it cannot tokenize, such as one with a byte-order mark before a bracket on its first line; the run continues and flake8 still reports the missing commas.
+- A multi-line replacement field of an f-string or t-string (a name, a subscript, a call, a container, a nested format spec) keeps its `C812`; put the field on one line. When add-trailing-comma's rewrite would change a format spec or a t-string, it leaves the whole file as it was and adds none of that file's other missing commas.
+- Write mode adds no trailing commas to a file that is not UTF-8, has bare carriage-return line endings and a bracket, or is not writable, and flake8 reports them. black stops the run first, with its own message, on a file that is not UTF-8 and has no coding declaration, and on a read-only file it would reformat.
 - Multi-line PEP 695 type parameters get their trailing comma but black then reflows the parameter list, so the first `max-lint lint` still reports `C812` and a second run settles it.
 - `max-lint --check test` accepts `--check` without effect: the tests run and no formatting is checked.
 
