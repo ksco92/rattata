@@ -30,4 +30,4 @@ What each command does is under [Commands and exit codes](README.md#commands-and
 
 ## Release
 
-A change that should be released bumps `version` in `pyproject.toml` and the matching entry in `uv.lock` (`uv lock` updates it). Merging it to `main` publishes that version to PyPI when PyPI does not have it yet; a merge that leaves the version unchanged publishes nothing.
+A change that should be released bumps `version` in `pyproject.toml` and the matching entry in `uv.lock` (`uv lock` updates it). The version has the form `X.Y.Z` (three numbers); the publish workflow fails on anything else, such as `1.0.0rc1`. Merging it to `main` publishes that version to PyPI when PyPI does not have it yet; a merge that leaves the version unchanged publishes nothing.
