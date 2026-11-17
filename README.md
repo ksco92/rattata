@@ -210,7 +210,7 @@ The tools are black, isort, flake8, mypy, pytest, pytest-cov, pytest-socket and 
 - black and isort use line length 130, and isort uses `profile = "black"`. black targets the Python versions allowed by `requires-python`.
 - flake8 selects `ANN401` in addition to its defaults and ignores `E203` and `E501`. pydoclint checks Sphinx-style docstrings without argument types in the docstring and skips private functions and return types.
 - Docstrings are parsed with the `raw` and `include` directives disabled, so flake8 reports each use as `RST299`.
-- mypy always runs with `disallow_untyped_defs`, `warn_redundant_casts` and `no_implicit_optional`.
+- mypy always runs with `disallow_untyped_defs`, `warn_redundant_casts`, `no_implicit_optional`, `disallow_any_unimported`, `disallow_any_generics`, `disallow_any_explicit` and `warn_return_any`.
 - Coverage is branch coverage with a floor of 95% compared to two decimals, the missing lines shown, and `pragma: no cover` and `if __name__ == .__main__.:` as the excluded lines.
 - pytest runs with `--import-mode=importlib`, and the current directory is importable, so a project that is not an installed package can import its own modules in its tests.
 
@@ -218,18 +218,14 @@ Settings for these tools in the project (`[tool.black]`, `[tool.isort]`, `.flake
 
 ## Project mypy and pytest settings
 
-mypy checks the files under `paths` only, so test code is not type-checked unless a `paths` entry also covers it. Apart from the three locked settings, it reads the `[tool.mypy]` table and the `[[tool.mypy.overrides]]` entries of the project's `pyproject.toml`, such as `python_version`, `plugins` and per-module `ignore_missing_imports`; a project with no `[tool.mypy]` table works, and no other mypy configuration file (`mypy.ini`, `setup.cfg`) is read:
+mypy checks the files under `paths` only, so test code is not type-checked unless a `paths` entry also covers it. Apart from the locked settings, it reads the `[tool.mypy]` table and the `[[tool.mypy.overrides]]` entries of the project's `pyproject.toml`, such as `python_version` and `plugins`; a project with no `[tool.mypy]` table works, and no other mypy configuration file (`mypy.ini`, `setup.cfg`) is read:
 
 ```toml
 [tool.mypy]
 python_version = "3.13"
-
-[[tool.mypy.overrides]]
-module = ["legacy_sdk.*"]
-ignore_missing_imports = true
 ```
 
-A project that sets one of the three locked settings in `[tool.mypy]` or in an override, under any name mypy accepts for it (`allow_untyped_defs`, for example), gets exit status 2 before any tool runs. mypy resolves third-party imports from the environment max-lint runs in, and writes its cache to `.mypy_cache` in the current directory. A plugin named by module must be importable from that environment because the working directory is not on the import path; a plugin given as a file path works. The project's `[tool.pytest.ini_options]` is read, so keys such as `pythonpath` work.
+A library without type information gets a stub package in the project's dev dependencies, such as `boto3-stubs` for boto3. A project that sets one of the locked settings in `[tool.mypy]` or in an override, under any name mypy accepts for it (`allow_untyped_defs`, for example), gets exit status 2 before any tool runs. mypy resolves third-party imports from the environment max-lint runs in, and writes its cache to `.mypy_cache` in the current directory. A plugin named by module must be importable from that environment because the working directory is not on the import path; a plugin given as a file path works. The project's `[tool.pytest.ini_options]` is read, so keys such as `pythonpath` work.
 
 ## Commands and exit codes
 

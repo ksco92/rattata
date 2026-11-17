@@ -127,5 +127,6 @@ def lint_commands(config: Config, check: bool, scratch: Path) -> list[list[str]]
     commands = [[*command, "--", *targets] for command in (black, isort, flake8)]
     mypy = [sys.executable, "-m", "mypy", "--config-file", str(root / "pyproject.toml")]
     mypy += ["--python-executable", sys.executable, "--disallow-untyped-defs", "--warn-redundant-casts", "--no-implicit-optional"]
+    mypy += ["--disallow-any-unimported", "--disallow-any-generics", "--disallow-any-explicit", "--warn-return-any"]
 
     return [*commands, [*mypy, "--", *(f"./{path}" for path in python_files(replace(config, test_paths=[])))]]
