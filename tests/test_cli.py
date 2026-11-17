@@ -16,7 +16,13 @@ def test_main_without_arguments_needs_a_max_lint_table(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Running with no arguments runs the lint and test steps, which need ``[tool.max-lint]``."""
+    """
+    Running with no arguments runs the lint and test steps, which need ``[tool.max-lint]``.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capsys: Captures what max-lint prints.
+    """
     (tmp_path / "pyproject.toml").write_text("")
     monkeypatch.chdir(tmp_path)
 
@@ -25,7 +31,11 @@ def test_main_without_arguments_needs_a_max_lint_table(
 
 
 def test_version_flag_prints_installed_version(capsys: pytest.CaptureFixture[str]) -> None:
-    """``--version`` prints the name and the installed package version, then exits 0."""
+    """
+    ``--version`` prints the name and the installed package version, then exits 0.
+
+    :param capsys: Captures what max-lint prints.
+    """
     with pytest.raises(SystemExit) as exc_info:
         main(["--version"])
 
@@ -34,7 +44,11 @@ def test_version_flag_prints_installed_version(capsys: pytest.CaptureFixture[str
 
 
 def test_help_flag_exits_zero(capsys: pytest.CaptureFixture[str]) -> None:
-    """``--help`` prints usage and exits 0."""
+    """
+    ``--help`` prints usage and exits 0.
+
+    :param capsys: Captures what max-lint prints.
+    """
     with pytest.raises(SystemExit) as exc_info:
         main(["--help"])
 
@@ -61,7 +75,8 @@ def test_console_script_prints_version() -> None:
         ),
         (
             {
-                "pyproject.toml": '[tool.max-lint]\npaths = ["src"]\ntest-paths = ["my tests"]\n',
+                "pyproject.toml": '[tool.max-lint]\npaths = ["src"]\ntest-paths = ["my tests"]\n'
+                '\n[tool.max-lint.per-file-ignores]\n"my tests/*" = ["D103"]\n',
                 "src/a.py": "",
                 "my tests/test_a.py": "",
             },
@@ -69,8 +84,8 @@ def test_console_script_prints_version() -> None:
             "':', ',' or a name that is not UTF-8; rename it or add it to 'exclude'.\n",
         ),
         (
-            {"pyproject.toml": '[tool.max-lint]\npaths = ["src"]\ntest-paths = ["tests"]\n', "src/a.py": "", "tests/x\ny.py": ""},
-            "max-lint: 'tests/x\\ny.py' needs ignored codes from [tool.max-lint] but flake8 cannot name a path with whitespace, "
+            {"pyproject.toml": '[tool.max-lint]\npaths = ["src"]\n', "src/x\ny/__init__.py": ""},
+            "max-lint: 'src/x\\ny/__init__.py' needs ignored codes from [tool.max-lint] but flake8 cannot name a path with whitespace, "
             "':', ',' or a name that is not UTF-8; rename it or add it to 'exclude'.\n",
         ),
     ],
@@ -83,7 +98,15 @@ def test_lint_configuration_error_exits_two_with_one_line(
     files: dict[str, str],
     message: str,
 ) -> None:
-    """The message goes to stderr as one line."""
+    """
+    The message goes to stderr as one line.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capsys: Captures what max-lint prints.
+    :param files: File contents by relative path.
+    :param message: Expected stderr output.
+    """
     for name, text in files.items():
         (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
         (tmp_path / name).write_text(text)
@@ -97,7 +120,11 @@ def test_lint_configuration_error_exits_two_with_one_line(
 
 
 def test_lint_rejects_unknown_option(capsys: pytest.CaptureFixture[str]) -> None:
-    """An unrecognised option is a usage error with exit status 2."""
+    """
+    An unrecognised option is a usage error with exit status 2.
+
+    :param capsys: Captures what max-lint prints.
+    """
     with pytest.raises(SystemExit) as exc_info:
         main(["lint", "--fix"])
 
@@ -110,14 +137,20 @@ def test_lint_rejects_file_name_that_is_not_utf8(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """A file under a test path whose name is not UTF-8 is a one-line configuration error."""
+    """
+    An ``__init__.py`` in a directory whose name is not UTF-8 is a one-line configuration error.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capsys: Captures what max-lint prints.
+    """
     (tmp_path / "src").mkdir()
-    (tmp_path / "src/a.py").write_text("")
-    (tmp_path / "tests").mkdir()
-    (tmp_path / "pyproject.toml").write_text('[tool.max-lint]\npaths = ["src"]\ntest-paths = ["tests"]\n')
+    (tmp_path / "pyproject.toml").write_text('[tool.max-lint]\npaths = ["src"]\n')
 
     try:
-        open(os.path.join(os.fsencode(tmp_path), b"tests", b"bad\xff.py"), "w").close()
+        package = os.path.join(os.fsencode(tmp_path), b"src", b"bad\xff")
+        os.mkdir(package)
+        open(os.path.join(package, b"__init__.py"), "w").close()
     except OSError:
         pytest.skip("the file system accepts only UTF-8 file names")
 
@@ -127,6 +160,6 @@ def test_lint_rejects_file_name_that_is_not_utf8(
 
     assert exit_code == 2
     assert capsys.readouterr().err == (
-        "max-lint: 'tests/bad\\udcff.py' needs ignored codes from [tool.max-lint] but flake8 cannot name a path with whitespace, "
+        "max-lint: 'src/bad\\udcff/__init__.py' needs ignored codes from [tool.max-lint] but flake8 cannot name a path with whitespace, "
         "':', ',' or a name that is not UTF-8; rename it or add it to 'exclude'.\n"
     )

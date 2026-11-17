@@ -25,7 +25,7 @@ def sign(value: int) -> str:
     """
     Return the sign of the value.
 
-    :param value: the number.
+    :param value: Number whose sign is returned.
     :return: ``positive`` or ``other``.
     """
     if value > 0:
@@ -70,7 +70,12 @@ NO_FILES = "measured no files"
 
 
 def write_files(root: Path, files: dict[str, str]) -> None:
-    """Write each relative path in ``files`` under ``root``, creating parent directories."""
+    """
+    Write each relative path in ``files`` under ``root``, creating parent directories.
+
+    :param root: Directory the files are written under.
+    :param files: File contents by relative path.
+    """
     for name, text in files.items():
         path = root / name
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -84,7 +89,16 @@ def run_max_lint(
     capfd: pytest.CaptureFixture[str],
     *arguments: str,
 ) -> tuple[int, str]:
-    """Write ``files`` under ``root``, run ``max-lint`` there and return the exit code and the combined output."""
+    r"""
+    Write ``files`` under ``root``, run ``max-lint`` there and return the exit code and the combined output.
+
+    :param root: Directory the files are written under and max-lint runs in.
+    :param files: File contents by relative path.
+    :param monkeypatch: Changes the working directory to ``root``.
+    :param capfd: Captures the output of the tools the run starts.
+    :param \*arguments: Arguments given to max-lint.
+    :return: Exit code and combined output.
+    """
     write_files(root, files)
     monkeypatch.chdir(root)
     exit_code = main(list(arguments))
@@ -94,7 +108,13 @@ def run_max_lint(
 
 
 def sized_module(missed: int, statements: int) -> str:
-    """Return a module of ``statements`` statements of which ``missed`` are in a function that is never called."""
+    """
+    Return a module of ``statements`` statements of which ``missed`` are in a function that is never called.
+
+    :param missed: Statements in the function that is never called.
+    :param statements: Total statements in the module.
+    :return: Source text of the module.
+    """
     return f'"""Sized."""\n\ndef unused() -> None:\n{"    VALUE = 1\n" * missed}\n{"VALUE = 1\n" * (statements - 1 - missed)}'
 
 
@@ -103,7 +123,13 @@ def test_fully_covered_project_exits_zero(
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
 ) -> None:
-    """Passing tests over fully covered branches exit 0 and report the coverage."""
+    """
+    Passing tests over fully covered branches exit 0 and report the coverage.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    """
     exit_code, output = run_max_lint(tmp_path, BASE_FILES, monkeypatch, capfd, "test")
 
     assert exit_code == 0
@@ -115,7 +141,13 @@ def test_untested_branch_under_the_floor_exits_one_and_shows_missing_lines(
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
 ) -> None:
-    """An untested branch that drops coverage under 95% fails with the missing lines listed."""
+    """
+    An untested branch that drops coverage under 95% fails with the missing lines listed.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    """
     files = {**BASE_FILES, "tests/test_sign.py": POSITIVE_ONLY_TEST}
 
     exit_code, output = run_max_lint(tmp_path, files, monkeypatch, capfd, "test")
@@ -138,14 +170,29 @@ def test_floor_is_95_percent(
     statements: int,
     exit_code: int,
 ) -> None:
-    """Exactly 95% passes, and 94% and 94.7% fail."""
+    """
+    Exactly 95% passes, and 94% and 94.7% fail.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    :param missed: Statements in the function that is never called.
+    :param statements: Total statements in the module.
+    :param exit_code: Expected exit status.
+    """
     files = {**BASE_FILES, "src/pkg/__init__.py": sized_module(missed, statements), "tests/test_sign.py": IMPORT_TEST}
 
     assert run_max_lint(tmp_path, files, monkeypatch, capfd, "test")[0] == exit_code
 
 
 def test_branch_coverage_is_measured(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixture[str]) -> None:
-    """Fully executed statements with untaken branches fall under the floor."""
+    """
+    Fully executed statements with untaken branches fall under the floor.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    """
     files = {**BASE_FILES, "src/pkg/__init__.py": FLAGS_MODULE, "tests/test_sign.py": IMPORT_TEST}
 
     exit_code, output = run_max_lint(tmp_path, files, monkeypatch, capfd, "test")
@@ -161,7 +208,14 @@ def test_project_coverage_settings_do_not_lower_the_floor(
     capfd: pytest.CaptureFixture[str],
     name: str,
 ) -> None:
-    """A project that turns branch coverage off and sets fail_under to 10 still fails at 77% branch coverage."""
+    """
+    A project that turns branch coverage off and sets fail_under to 10 still fails at 77% branch coverage.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    :param name: Name of the coverage settings file in the project.
+    """
     files = {**BASE_FILES, "src/pkg/__init__.py": FLAGS_MODULE, "tests/test_sign.py": IMPORT_TEST, name: LOOSE_COVERAGE[name]}
 
     exit_code, output = run_max_lint(tmp_path, files, monkeypatch, capfd, "test")
@@ -184,7 +238,14 @@ def test_excluded_lines_do_not_count(
     capfd: pytest.CaptureFixture[str],
     module: str,
 ) -> None:
-    """Code under ``pragma: no cover`` or ``if __name__ == "__main__":`` is left out of the measurement."""
+    """
+    Code under ``pragma: no cover`` or ``if __name__ == "__main__":`` is left out of the measurement.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    :param module: Contents of the measured module.
+    """
     files = {**BASE_FILES, "src/pkg/__init__.py": module, "tests/test_sign.py": IMPORT_TEST}
 
     assert run_max_lint(tmp_path, files, monkeypatch, capfd, "test")[0] == 0
@@ -197,7 +258,14 @@ def test_coverage_omit_removes_files_from_the_measurement(
     capfd: pytest.CaptureFixture[str],
     pattern: str,
 ) -> None:
-    """A file matching a ``coverage-omit`` pattern is not measured, and is measured without the key."""
+    """
+    A file matching a ``coverage-omit`` pattern is not measured, and is measured without the key.
+
+    :param tmp_path: Directory holding the ``plain`` and ``omitting`` projects.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    :param pattern: Pattern given as ``coverage-omit``.
+    """
     generated = '"""Generated."""\n\n\ndef unused() -> None:\n' + "    VALUE = 1\n" * 20
     files = {**BASE_FILES, "src/pkg/generated.py": generated}
     omitting = {**files, "pyproject.toml": BASE_PYPROJECT.replace('["src/pkg"]', f'["src/pkg"]\ncoverage-omit = ["{pattern}"]')}
@@ -211,7 +279,13 @@ def test_project_coverage_options_in_pytest_settings_do_not_widen_the_scope(
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
 ) -> None:
-    """A bare ``--cov`` in the project's ``addopts`` does not add files outside ``coverage-source``."""
+    """
+    A bare ``--cov`` in the project's ``addopts`` does not add files outside ``coverage-source``.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    """
     pyproject = BASE_PYPROJECT + 'addopts = "--cov --cov-fail-under=10"\n'
     other = '"""Other."""\n\n\ndef unused() -> None:\n' + "    VALUE = 1\n" * 50
     files = {
@@ -239,7 +313,14 @@ def test_measuring_no_files_fails_although_tests_pass(
     capfd: pytest.CaptureFixture[str],
     files: dict[str, str],
 ) -> None:
-    """When coverage has nothing to measure, the step exits 1 and says so."""
+    """
+    When coverage has nothing to measure, the step exits 1 and says so.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    :param files: Files that replace or extend the base project.
+    """
     exit_code, output = run_max_lint(tmp_path, {**BASE_FILES, **files}, monkeypatch, capfd, "test")
 
     assert exit_code == 1
@@ -252,7 +333,13 @@ def test_failing_test_exits_one_without_the_no_files_message(
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
 ) -> None:
-    """A failing test is a tool failure and leaves the coverage report alone."""
+    """
+    A failing test is a tool failure and leaves the coverage report alone.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    """
     files = {**BASE_FILES, "tests/test_sign.py": SIGN_TEST.replace('"positive"', '"negative"')}
 
     exit_code, output = run_max_lint(tmp_path, files, monkeypatch, capfd, "test")
@@ -267,7 +354,13 @@ def test_interrupted_pytest_run_exits_one_without_the_no_files_message(
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
 ) -> None:
-    """A collection error ends the run with exit 1 and does not blame the coverage scope."""
+    """
+    A collection error ends the run with exit 1 and does not blame the coverage scope.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    """
     files = {**BASE_FILES, "tests/test_sign.py": "def broken(:\n"}
 
     exit_code, output = run_max_lint(tmp_path, files, monkeypatch, capfd, "test")
@@ -284,7 +377,14 @@ def test_module_in_the_project_root_is_importable_by_the_tests(
     capfd: pytest.CaptureFixture[str],
     arguments: list[str],
 ) -> None:
-    """A project that is not installed passes, also after the lint tools ran with ``PYTHONSAFEPATH``."""
+    """
+    A project that is not installed passes, also after the lint tools ran with ``PYTHONSAFEPATH``.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    :param arguments: Arguments given to max-lint.
+    """
     exit_code, output = run_max_lint(tmp_path, ROOT_MODULE_FILES, monkeypatch, capfd, *arguments)
 
     assert exit_code == 0
@@ -296,7 +396,13 @@ def test_python_safe_path_set_by_the_user_reaches_pytest(
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
 ) -> None:
-    """A value the user set is passed on unchanged, so the root module is not importable."""
+    """
+    A value the user set is passed on unchanged, so the root module is not importable.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Changes the working directory and sets ``PYTHONSAFEPATH``.
+    :param capfd: Captures the output of the tools the run starts.
+    """
     monkeypatch.setenv("PYTHONSAFEPATH", "1")
 
     exit_code, output = run_max_lint(tmp_path, ROOT_MODULE_FILES, monkeypatch, capfd, "test")
@@ -310,7 +416,13 @@ def test_tests_are_collected_with_the_importlib_import_mode(
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
 ) -> None:
-    """Test files with the same base name in different directories do not clash."""
+    """
+    Test files with the same base name in different directories do not clash.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    """
     files = {**BASE_FILES, "tests/one/test_same.py": IMPORT_TEST, "tests/two/test_same.py": IMPORT_TEST}
 
     exit_code, output = run_max_lint(tmp_path, files, monkeypatch, capfd, "test")
@@ -324,7 +436,13 @@ def test_only_coverage_data_and_pytest_cache_are_written_to_the_project(
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
 ) -> None:
-    """Only the coverage data file and pytest's cache are left in the project directory."""
+    """
+    Only the coverage data file and pytest's cache are left in the project directory.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    """
     run_max_lint(tmp_path, BASE_FILES, monkeypatch, capfd, "test")
 
     assert {path.name for path in tmp_path.iterdir()} == {"pyproject.toml", "src", "tests", ".coverage", ".pytest_cache"}
@@ -349,7 +467,16 @@ def test_missing_test_settings_exit_two_before_anything_runs(
     key: str,
     arguments: list[str],
 ) -> None:
-    """The message names the key and no file is rewritten."""
+    """
+    The message names the key and no file is rewritten.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    :param pyproject: Contents of the ``pyproject.toml`` under test.
+    :param key: Setting the message names.
+    :param arguments: Arguments given to max-lint.
+    """
     files = {**BASE_FILES, "pyproject.toml": pyproject, "src/pkg/data.py": UNFORMATTED_MODULE}
 
     exit_code, output = run_max_lint(tmp_path, files, monkeypatch, capfd, *arguments)
@@ -365,7 +492,13 @@ def test_lint_does_not_need_the_test_settings(
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
 ) -> None:
-    """``max-lint lint`` runs without ``test-paths`` or ``coverage-source``."""
+    """
+    ``max-lint lint`` runs without ``test-paths`` or ``coverage-source``.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    """
     files = {"pyproject.toml": '[tool.max-lint]\npaths = ["src"]\n', "src/pkg/__init__.py": SIGN_MODULE}
 
     assert run_max_lint(tmp_path, files, monkeypatch, capfd, "lint")[0] == 0
@@ -376,7 +509,13 @@ def test_bare_run_with_a_lint_failure_does_not_run_pytest(
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
 ) -> None:
-    """A flake8 failure stops the run before pytest starts."""
+    """
+    A flake8 failure stops the run before pytest starts.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    """
     files = {**BASE_FILES, "src/pkg/extra.py": UNDOCUMENTED_MODULE, "tests/test_marker.py": MARKER_TEST}
 
     exit_code, output = run_max_lint(tmp_path, files, monkeypatch, capfd)
@@ -391,7 +530,13 @@ def test_bare_run_on_a_clean_project_runs_lint_then_tests(
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
 ) -> None:
-    """Both halves run and the run exits 0."""
+    """
+    Both halves run and the run exits 0.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    """
     exit_code, output = run_max_lint(tmp_path, {**BASE_FILES, "tests/test_marker.py": MARKER_TEST}, monkeypatch, capfd)
 
     assert exit_code == 0
@@ -404,7 +549,13 @@ def test_bare_run_stops_when_the_tests_fail(
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
 ) -> None:
-    """A passing lint step does not hide a failing test step."""
+    """
+    A passing lint step does not hide a failing test step.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    """
     files = {**BASE_FILES, "tests/test_sign.py": POSITIVE_ONLY_TEST}
 
     assert run_max_lint(tmp_path, files, monkeypatch, capfd)[0] == 1
@@ -421,7 +572,14 @@ def test_check_mode_does_not_rewrite_files_or_run_pytest(
     capfd: pytest.CaptureFixture[str],
     arguments: list[str],
 ) -> None:
-    """``--check`` fails on an unformatted file, leaves it as it is and never reaches pytest."""
+    """
+    ``--check`` fails on an unformatted file, leaves it as it is and never reaches pytest.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    :param arguments: Arguments given to max-lint.
+    """
     files = {**BASE_FILES, "src/pkg/data.py": UNFORMATTED_MODULE, "tests/test_marker.py": MARKER_TEST}
 
     exit_code, output = run_max_lint(tmp_path, files, monkeypatch, capfd, *arguments)
@@ -437,7 +595,13 @@ def test_bare_check_run_on_a_formatted_project_runs_the_tests(
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
 ) -> None:
-    """``--check`` on a clean project continues to the test step."""
+    """
+    ``--check`` on a clean project continues to the test step.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    """
     exit_code, output = run_max_lint(tmp_path, {**BASE_FILES, "tests/test_marker.py": MARKER_TEST}, monkeypatch, capfd, "--check")
 
     assert exit_code == 0
@@ -446,7 +610,13 @@ def test_bare_check_run_on_a_formatted_project_runs_the_tests(
 
 
 def test_test_command_does_not_lint(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixture[str]) -> None:
-    """``max-lint test`` leaves unformatted and undocumented files alone."""
+    """
+    ``max-lint test`` leaves unformatted and undocumented files alone.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    """
     files = {**BASE_FILES, "src/pkg/data.py": UNFORMATTED_MODULE, "src/pkg/extra.py": UNDOCUMENTED_MODULE}
 
     exit_code, output = run_max_lint(tmp_path, files, monkeypatch, capfd, "test")
@@ -461,7 +631,13 @@ def test_lint_command_does_not_run_pytest(
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
 ) -> None:
-    """``max-lint lint`` stops after the lint steps."""
+    """
+    ``max-lint lint`` stops after the lint steps.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    """
     exit_code, _ = run_max_lint(tmp_path, {**BASE_FILES, "tests/test_marker.py": MARKER_TEST}, monkeypatch, capfd, "lint")
 
     assert exit_code == 0
@@ -469,7 +645,11 @@ def test_lint_command_does_not_run_pytest(
 
 
 def test_test_rejects_unknown_option(capsys: pytest.CaptureFixture[str]) -> None:
-    """An unrecognised option on ``test`` is a usage error with exit status 2."""
+    """
+    An unrecognised option on ``test`` is a usage error with exit status 2.
+
+    :param capsys: Captures what max-lint prints.
+    """
     with pytest.raises(SystemExit) as exc_info:
         main(["test", "--check"])
 
@@ -482,7 +662,13 @@ def test_test_path_named_like_an_option_is_a_path(
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
 ) -> None:
-    """A directory named ``--cov-fail-under=0`` does not lower the floor."""
+    """
+    A directory named ``--cov-fail-under=0`` does not lower the floor.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    """
     files = {
         "pyproject.toml": BASE_PYPROJECT.replace('"tests"', '"--cov-fail-under=0"'),
         "src/pkg/__init__.py": SIGN_MODULE,
@@ -502,7 +688,14 @@ def test_test_path_named_like_a_plugin_switch_is_a_path(
     capfd: pytest.CaptureFixture[str],
     absolute: bool,
 ) -> None:
-    """A directory named ``-pevilplug`` is collected for tests and no ``evilplug`` plugin is loaded."""
+    """
+    A directory named ``-pevilplug`` is collected for tests and no ``evilplug`` plugin is loaded.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    :param absolute: Whether the test path is given as an absolute path.
+    """
     entry = f"{tmp_path}/-pevilplug" if absolute else "-pevilplug"
     files = {
         "pyproject.toml": f'[tool.max-lint]\npaths = ["pkg"]\ntest-paths = ["{entry}"]\ncoverage-source = ["pkg"]\n',
@@ -524,7 +717,12 @@ def test_test_path_named_like_a_plugin_switch_is_a_path(
     ids=["delete", "home-variable", "strict-variable", "double-dollar", "quote-backslash", "non-ascii", "glob"],
 )
 def test_coverage_omit_reaches_coverage_unchanged(tmp_path: Path, pattern: str) -> None:
-    """Coverage reads the generated config and gets exactly the ``coverage-omit`` pattern."""
+    """
+    Coverage reads the generated config and gets exactly the ``coverage-omit`` pattern.
+
+    :param tmp_path: Directory the coverage config is written to.
+    :param pattern: Pattern given as ``coverage-omit``.
+    """
     pytest_command(Config(["src"], ["tests"], [], ["src"], [pattern, "plain"], {}, []), tmp_path)
 
     assert Coverage(config_file=str(tmp_path / "coverage.toml")).get_option("run:omit") == [pattern, "plain"]

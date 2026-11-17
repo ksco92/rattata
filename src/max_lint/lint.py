@@ -5,7 +5,6 @@ import os
 import re
 import stat
 import sys
-from dataclasses import replace
 from fnmatch import fnmatchcase
 from importlib.resources import files
 from pathlib import Path
@@ -70,16 +69,10 @@ def per_file_ignores(config: Config, targets: list[str]) -> str:
     :return: the config file text.
     :raises ConfigError: when a target that needs ignored codes has whitespace, ``:``, ``,`` or a non-UTF-8 name.
     """
-    test_roots = {_identity(path) for path in config.test_paths}
     lines = ["[flake8]", "per-file-ignores ="]
 
     for target in targets:
         codes = list(INIT_CODES) if os.path.basename(target) == "__init__.py" else []
-
-        resolved = Path(target).resolve()
-
-        if any(_identity(location) in test_roots for location in (resolved, *resolved.parents)):
-            codes.append("DOC")
 
         for glob, entry_codes in config.per_file_ignores.items():
             if fnmatchcase(target, os.path.normpath(glob)):
@@ -129,4 +122,4 @@ def lint_commands(config: Config, check: bool, scratch: Path) -> list[list[str]]
     mypy += ["--python-executable", sys.executable, "--disallow-untyped-defs", "--warn-redundant-casts", "--no-implicit-optional"]
     mypy += ["--disallow-any-unimported", "--disallow-any-generics", "--disallow-any-explicit", "--warn-return-any"]
 
-    return [*commands, [*mypy, "--", *(f"./{path}" for path in python_files(replace(config, test_paths=[])))]]
+    return [*commands, [*mypy, "--", *(f"./{path}" for path in targets)]]
