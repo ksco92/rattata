@@ -30,7 +30,7 @@ uv add --dev max-lint
 
 ## Usage
 
-A project declares what it owns in a `[tool.max-lint]` table of its `pyproject.toml`. Run the commands with `uv run` from the directory that holds `pyproject.toml`. This project, with max-lint added as above (in a code block that holds several files, each `# path` comment starts a file):
+A project declares what it owns in a `[tool.max-lint]` table of its `pyproject.toml`. Run the commands with `uv run` from the directory that holds `pyproject.toml`. This project, with max-lint added as above; the second block holds three files, each starting at its `# path` comment:
 
 ```toml
 # pyproject.toml
@@ -102,7 +102,7 @@ src/inventory/stock.py:4:1: DOC101 Function `restock`: Docstring contains fewer 
 src/inventory/stock.py:4:1: DOC103 Function `restock`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [count: int, item: str].
 ```
 
-Once flake8 passes, mypy runs last. With `src/inventory/__init__.py` and `tests/test_stock.py` as the previous command left them, a completed `restock` docstring in `src/inventory/stock.py` and a module `src/inventory/report.py` that passes a string where `restock` expects an int, in one block where each `# path` comment starts a file:
+Once flake8 passes, mypy runs last. `src/inventory/__init__.py` and `tests/test_stock.py` stay as the previous command left them, `src/inventory/stock.py` gets the completed `restock` docstring, and `src/inventory/report.py` is added and passes a string where `restock` expects an int:
 
 ```python
 # src/inventory/stock.py
@@ -187,7 +187,7 @@ Success: no issues found in 3 source files
 ## Adopting in an existing project
 
 A first run on code written to another style usually meets three things:
-- Trailing commas: `max-lint lint` adds the missing ones, so the first run rewrites many files. `max-lint lint --check` reports them as flake8 `C81x` findings, such as `C812 missing trailing comma`, once black accepts every file; until then it stops at black with `would reformat <file>`. The shapes that write mode leaves for hand-fixing are under [Known limitations](#known-limitations).
+- Trailing commas: `max-lint lint` adds the missing ones, so the first run rewrites many files. `max-lint lint --check` reports them through flake8 as `C81x` findings once black accepts every file, and stops at black with `would reformat <file>` before that. The shapes that write mode leaves for hand-fixing are under [Known limitations](#known-limitations).
 - Libraries without type information: mypy reports `error: Skipping analyzing "boto3": module is installed, but missing library stubs or py.typed marker  [import-untyped]`. Add the library's stub package to the project's dev dependencies, with the extras for the services in use and at the version of the project's `boto3`, for example `uv add --dev "boto3-stubs[s3]==1.44.4"` for boto3 1.44.4. mypy then checks every call into the library, such as `Argument "Bucket" to "create_bucket" of "S3Client" has incompatible type "int"; expected "str"  [arg-type]`.
   - `ignore_missing_imports = true` in `[tool.mypy]` hides the message instead, but everything imported from the library becomes `Any`: its calls go unchecked and annotations that use its types are reported as `no-any-unimported`.
 - Methods and tests: flake8 reports `ANN101` and `ANN102` on a `self` or `cls` without an annotation, so write `self: Self` and `cls: type[Self]` with `Self` from `typing`. Test functions are held to the same rules as source: without `-> None` and a docstring they get `ANN201` and `D103`.
