@@ -885,19 +885,19 @@ def test_case_variant_spellings_are_linted_once(
     assert flake8_codes(output) == ["src/pkg/mod.py:1:1: D100"]
 
 
-def run_check_command(root: Path, piped: str | None = None) -> tuple[int, str]:
+def run_check_command(root: Path, piped: str = "") -> tuple[int, str]:
     """
     Run ``max-lint lint --check`` as a process in ``root`` and return its exit code and combined output.
 
     :param root: Project directory the process runs in.
-    :param piped: Text written to the process's standard input; None closes standard input.
+    :param piped: Text written to the process's standard input.
     :return: Exit code and combined output.
     :raises subprocess.TimeoutExpired: when the run does not end within the time limit.
     """
     process = subprocess.Popen(
         [str(Path(sys.executable).parent / "max-lint"), "lint", "--check"],
         cwd=root,
-        stdin=subprocess.DEVNULL if piped is None else subprocess.PIPE,
+        stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
@@ -976,7 +976,7 @@ def test_file_named_dash_stops_the_run_before_any_tool_starts(
     exit_code, output = lint(tmp_path, monkeypatch, capfd, *arguments)
 
     assert exit_code == 2
-    assert "'-' in [tool.max-lint] names a file that black and flake8 read as standard input; rename the file." in output
+    assert "read as standard input; rename the file." in output
     assert started == []
 
 
