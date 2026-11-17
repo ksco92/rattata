@@ -41,7 +41,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--version", action="version", version=f"%(prog)s {version('max-lint')}")
     parser.add_argument("--check", action="store_true", help="check formatting with black and isort without rewriting files")
     subcommands = parser.add_subparsers(dest="command")
-    lint_parser = subcommands.add_parser("lint", help="add trailing commas and format, then check with flake8 and mypy")
+    lint_parser = subcommands.add_parser("lint", help="format and add trailing commas, then check with flake8 and mypy")
     lint_parser.add_argument(
         "--check",
         action="store_true",
