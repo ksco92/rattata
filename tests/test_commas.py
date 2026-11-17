@@ -1,12 +1,13 @@
 """Tests for the comma step against the real add-trailing-comma, run in process so its branches are measured."""
 
+import os
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 
-from max_lint.commas import main
+from max_lint.commas import _inserts_only_commas, main
 
 if sys.platform != "win32":
     import resource
@@ -17,16 +18,13 @@ if sys.platform != "win32":
     [
         (b"x = [\n    1,\n    2\n]\n", b"x = [\n    1,\n    2,\n]\n"),
         (b"\xff\n", b"\xff\n"),
+        (b"\r# coding: latin-1\nx = [\n    1,\n    2\n]\n", b"\r# coding: latin-1\nx = [\n    1,\n    2\n]\n"),
         (b"with (open(name) as handle,):\n    pass\n", b"with (open(name) as handle,):\n    pass\n"),
         (b"x = [  # fmt:skip\n    1\n]\n", b"x = [  # fmt:skip\n    1\n]\n"),
-        (
-            b"# coding: utf-7\nx = print(0,  # +AAo-)+AAo-y = (\n    1\n)\n",
-            b"# coding: utf-7\nx = print(0,  # +AAo-)+AAo-y = (\n    1\n)\n",
-        ),
     ],
-    ids=["comma-added", "not-utf8", "comma-removed", "black-directive", "tree-changed"],
+    ids=["comma-added", "not-utf8", "declared-after-a-carriage-return", "comma-removed", "black-directive"],
 )
-def test_comma_step_writes_only_rewrites_that_keep_the_tree(tmp_path: Path, source: bytes, expected: bytes) -> None:
+def test_comma_step_writes_only_rewrites_that_insert_commas(tmp_path: Path, source: bytes, expected: bytes) -> None:
     """
     Each outcome of the step on one file.
 
@@ -40,6 +38,45 @@ def test_comma_step_writes_only_rewrites_that_keep_the_tree(tmp_path: Path, sour
     main([str(target)])
 
     assert target.read_bytes() == expected
+
+
+@pytest.mark.parametrize(
+    ("raw", "fixed", "accepted"),
+    [(b"x", b"x;", False), (b"ab", b"a,", False), (b"a", b"a", False), (b"a\nb", b"a b,", True), (b"a,b", b"a,,b", True)],
+)
+def test_inserts_only_commas(raw: bytes, fixed: bytes, accepted: bool) -> None:
+    """
+    A rewrite is accepted only when it is the file with commas inserted, whitespace aside.
+
+    :param raw: Bytes of the file.
+    :param fixed: Bytes of the rewrite.
+    :param accepted: Whether the rewrite only inserts commas.
+    """
+    assert _inserts_only_commas(raw, fixed) is accepted
+
+
+@pytest.mark.parametrize("warnings", [None, "error"])
+def test_comma_step_prints_nothing_for_a_file_that_warns(tmp_path: Path, warnings: str | None) -> None:
+    """
+    A file with an invalid escape sequence gains its comma and the step writes nothing to stderr.
+
+    :param tmp_path: Directory holding the file the step runs on.
+    :param warnings: Value of ``PYTHONWARNINGS`` for the step, or none.
+    """
+    target = tmp_path / "mod.py"
+    target.write_bytes(b'X = "\\d"\nY = [\n    1,\n    2\n]\n')
+    environment = {key: value for key, value in os.environ.items() if key != "PYTHONWARNINGS"}
+
+    result = subprocess.run(
+        [sys.executable, "-m", "max_lint.commas", str(target)],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=environment | ({"PYTHONWARNINGS": warnings} if warnings else {}),
+    )
+
+    assert (result.returncode, result.stderr) == (0, "")
+    assert target.read_bytes() == b'X = "\\d"\nY = [\n    1,\n    2,\n]\n'
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="file-size limits need the POSIX resource module")
