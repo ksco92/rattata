@@ -23,7 +23,7 @@ LONG_LINE = (
 UNDOCUMENTED_MODULE = f"from os.path import basename, join\n\n{LONG_LINE}"
 UNFORMATTED_MODULE = '"""Fixture module."""\nimport sys\nimport os\n\n' "VALUE = {'platform':sys.platform, 'sep':os.sep}\n"
 FORMATTED_MODULE = '"""Fixture module."""\n\nimport os\nimport sys\n\nVALUE = {"platform": sys.platform, "sep": os.sep}\n'
-UNDOCUMENTED_FUNCTION = '"""Fixture module."""\n\n\ndef add(first: int, second: int) -> int:\n    """\n    Add two numbers.\n\n    :param first: first addend.\n    """\n    return first + second\n'
+UNDOCUMENTED_FUNCTION = '"""Fixture module."""\n\n\ndef add(first: int, second: int) -> int:\n    """\n    Add two numbers.\n\n    :param first: Added to ``second``.\n    """\n    return first + second\n'
 SHORT_DOCSTRING = '\n\ndef short(value: int) -> int:\n    """Return the value."""\n    return value\n'
 LONG_WITH = (
     '"""Fixture module."""\n\n'
@@ -63,8 +63,8 @@ def passthrough(value: int) -> Any:
     """
     Return the value unchanged.
 
-    :param value: the value.
-    :return: the same value.
+    :param value: Returned as is.
+    :return: ``value``, unchanged.
     """
     return value
 
@@ -73,9 +73,9 @@ def window(items: list[int], start: int) -> list[int]:
     """
     Return the slice after ``start``.
 
-    :param items: the items.
-    :param start: the first index.
-    :return: the slice.
+    :param items: List the slice is taken from.
+    :param start: Index the slice follows.
+    :return: Up to two items after ``start``.
     """
     return items[start + 1 : start + 3]
 
@@ -99,7 +99,7 @@ class Box:
         """
         Create the box.
 
-        :param size: the size.
+        :param size: Stored as the box size.
         """
         self.size = size
 '''
@@ -107,19 +107,19 @@ UNTYPED_FUNCTION = '"""Fixture module."""\n\n\ndef run():  # noqa: ANN201\n    "
 MISTYPED_VALUE = '"""Fixture module."""\n\nVALUE: int = "text"\n'
 MYPY_ERROR = "src/mod.py:4: error: Function is missing a return type annotation  [no-untyped-def]"
 UNREACHABLE_BRANCH = (
-    '"""Fixture module."""\n\n\ndef run(value: int) -> None:\n    """\n    Print a string.\n\n    :param value: the value.\n    """\n'
+    '"""Fixture module."""\n\n\ndef run(value: int) -> None:\n    """\n    Print a string.\n\n    :param value: Printed when it is a string.\n    """\n'
     "    if isinstance(value, str):\n        print(value)\n"
 )
 UNREACHABLE_OVERRIDE = '\n[[tool.mypy.overrides]]\nmodule = ["mod"]\nwarn_unreachable = true\n'
 UNTYPED_LIBRARY_OVERRIDE = '\n[[tool.mypy.overrides]]\nmodule = ["missing_pkg"]\nignore_missing_imports = true\n'
 UNTYPED_LIBRARY_CLASS = (
     '"""Fixture module."""\n\nfrom missing_pkg import Widget\n\n\ndef run(widget: Widget) -> None:\n'
-    '    """\n    Use the widget.\n\n    :param widget: the widget.\n    """\n'
+    '    """\n    Use the widget.\n\n    :param widget: Annotated with a class from an untyped library.\n    """\n'
 )
 BARE_GENERIC = '"""Fixture module."""\n\nVALUE: dict = {}\n'
 EXPLICIT_ANY = '"""Fixture module."""\n\nfrom typing import Any\n\nVALUE: Any = 1\n'
 RETURNED_ANY = (
-    '"""Fixture module."""\n\nimport json\n\n\ndef run() -> int:\n    """\n    Parse a number.\n\n    :return: the number.\n    """\n'
+    '"""Fixture module."""\n\nimport json\n\n\ndef run() -> int:\n    """\n    Parse a number.\n\n    :return: Number parsed from ``"1"``.\n    """\n'
     '    return json.loads("1")\n'
 )
 
@@ -137,7 +137,12 @@ class BeaconHandler(http.server.BaseHTTPRequestHandler):
 
 
 def write_files(root: Path, files: dict[str, str]) -> None:
-    """Write each relative path in ``files`` under ``root``, creating parent directories."""
+    """
+    Write each relative path in ``files`` under ``root``, creating parent directories.
+
+    :param root: Directory the files are written under.
+    :param files: File contents by relative path.
+    """
     for name, text in files.items():
         path = root / name
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -145,7 +150,15 @@ def write_files(root: Path, files: dict[str, str]) -> None:
 
 
 def lint(root: Path, monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixture[str], *arguments: str) -> tuple[int, str]:
-    """Run ``max-lint lint`` from ``root`` and return the exit code and the combined output, with ``root`` replaced."""
+    r"""
+    Run ``max-lint lint`` from ``root`` and return the exit code and the combined output, with ``root`` replaced.
+
+    :param root: Project directory the command runs in.
+    :param monkeypatch: Changes the working directory to ``root``.
+    :param capfd: Captures the output of the tools the run starts.
+    :param \*arguments: Arguments given to max-lint.
+    :return: Exit code and combined output.
+    """
     monkeypatch.chdir(root)
     exit_code = main(["lint", *arguments])
     captured = capfd.readouterr()
@@ -154,7 +167,12 @@ def lint(root: Path, monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixtu
 
 
 def flake8_codes(output: str) -> list[str]:
-    """Return each flake8 violation in ``output`` as ``path:row:col: CODE``."""
+    """
+    Return each flake8 violation in ``output`` as ``path:row:col: CODE``.
+
+    :param output: Combined output of the tools.
+    :return: Each violation as ``path:row:col: CODE``.
+    """
     return re.findall(r"^(\S+\.py:\d+:\d+: [A-Z]+[0-9]+)", output, flags=re.MULTILINE)
 
 
@@ -163,7 +181,13 @@ def test_bundled_style_accepts_long_line_and_reports_missing_module_docstring(
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
 ) -> None:
-    """A 120-character line is left alone and a missing module docstring is reported."""
+    """
+    A 120-character line is left alone and a missing module docstring is reported.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    """
     write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT, "src/mod.py": UNDOCUMENTED_MODULE})
 
     exit_code, output = lint(tmp_path, monkeypatch, capfd)
@@ -192,7 +216,14 @@ def test_project_tool_settings_do_not_change_the_result(
     capfd: pytest.CaptureFixture[str],
     overrides: dict[str, str],
 ) -> None:
-    """Tool settings in the project leave output, exit code and files as they are without them."""
+    """
+    Tool settings in the project leave output, exit code and files as they are without them.
+
+    :param tmp_path: Directory holding the ``plain`` and ``overridden`` projects.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    :param overrides: Text appended to the settings file of that name in the ``overridden`` project.
+    """
     files = {"pyproject.toml": PLAIN_PYPROJECT, "src/mod.py": UNDOCUMENTED_MODULE}
     write_files(tmp_path / "plain", files)
     write_files(tmp_path / "overridden", files)
@@ -213,7 +244,13 @@ def test_bundled_formatter_line_lengths_and_isort_profile(
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
 ) -> None:
-    """Lines of 130 characters stay and lines of 131 are wrapped, by black and by isort's black profile alike."""
+    """
+    Lines of 130 characters stay and lines of 131 are wrapped, by black and by isort's black profile alike.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    """
     write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT, "src/mod.py": FORMATTER_LIMITS})
 
     lint(tmp_path, monkeypatch, capfd)
@@ -226,7 +263,13 @@ def test_bundled_flake8_and_pydoclint_options(
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
 ) -> None:
-    """Only ANN401 and the short docstring's missing sections are reported."""
+    """
+    Only ANN401 and the short docstring's missing sections are reported.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    """
     write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT, "src/mod.py": FLAKE8_STYLE})
 
     exit_code, output = lint(tmp_path, monkeypatch, capfd, "--check")
@@ -252,7 +295,15 @@ def test_lint_separates_first_party_imports(
     paths: str,
     package: str,
 ) -> None:
-    """The project's own package sorts after third-party imports."""
+    """
+    The project's own package sorts after third-party imports.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    :param paths: Value of ``paths`` in the project settings.
+    :param package: Directory of the project's own package.
+    """
     module = '"""Fixture module."""\n\nimport os\nfrom app import helpers\nimport black\n\nVALUE = (os, helpers, black)\n'
     write_files(
         tmp_path,
@@ -297,7 +348,15 @@ def test_black_target_follows_requires_python(
     requires_python: str,
     expected_with: str,
 ) -> None:
-    """Parenthesized context managers are used only from a Python 3.9 lower bound."""
+    """
+    Parenthesized context managers are used only from a Python 3.9 lower bound.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    :param requires_python: Value of ``requires-python`` in the project.
+    :param expected_with: Expected formatting of the ``with`` statement.
+    """
     pyproject = f'[project]\nrequires-python = "{requires_python}"\n\n{PLAIN_PYPROJECT}'
     write_files(tmp_path, {"pyproject.toml": pyproject, "src/mod.py": LONG_WITH})
 
@@ -306,18 +365,24 @@ def test_black_target_follows_requires_python(
     assert (tmp_path / "src/mod.py").read_text() == f'"""Fixture module."""\n\n{expected_with}    pass\n'
 
 
-def test_doc_codes_apply_to_paths_but_not_test_paths(
+def test_doc_codes_apply_to_test_paths_like_paths(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
 ) -> None:
-    """A function missing ``:param:`` lines reports DOC codes only outside the test paths."""
+    """
+    A function missing ``:param:`` lines reports DOC codes under ``test-paths`` as under ``paths``.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    """
     write_files(
         tmp_path,
         {
             "pyproject.toml": '[tool.max-lint]\npaths = ["lib"]\ntest-paths = ["checks"]\n',
             "lib/mod.py": UNDOCUMENTED_FUNCTION,
-            "checks/nested/test_mod.py": UNDOCUMENTED_FUNCTION.replace("\n\n\n", "\n\nimport os\n\n\n"),
+            "checks/nested/test_mod.py": UNDOCUMENTED_FUNCTION,
         },
     )
 
@@ -325,11 +390,43 @@ def test_doc_codes_apply_to_paths_but_not_test_paths(
 
     assert exit_code == 1
     assert flake8_codes(output) == [
-        "checks/nested/test_mod.py:3:1: F401",
+        "checks/nested/test_mod.py:4:1: DOC101",
+        "checks/nested/test_mod.py:4:1: DOC103",
+        "checks/nested/test_mod.py:4:1: DOC201",
         "lib/mod.py:4:1: DOC101",
         "lib/mod.py:4:1: DOC103",
         "lib/mod.py:4:1: DOC201",
     ]
+
+
+def test_documented_function_under_test_paths_passes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    """
+    A test file whose function documents every parameter and its return passes the lint.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    """
+    documented = UNDOCUMENTED_FUNCTION.replace(
+        "    :param first: Added to ``second``.\n",
+        "    :param first: Added to ``second``.\n    :param second: Added to ``first``.\n    :return: Sum of both.\n",
+    )
+    write_files(
+        tmp_path,
+        {
+            "pyproject.toml": '[tool.max-lint]\npaths = ["src"]\ntest-paths = ["tests"]\n',
+            "src/mod.py": FORMATTED_MODULE,
+            "tests/test_mod.py": documented,
+        },
+    )
+
+    exit_code, _ = lint(tmp_path, monkeypatch, capfd, "--check")
+
+    assert exit_code == 0
 
 
 def test_check_mode_reports_unformatted_file_without_writing(
@@ -337,7 +434,13 @@ def test_check_mode_reports_unformatted_file_without_writing(
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
 ) -> None:
-    """Check mode stops at black's failure and leaves the file byte-identical."""
+    """
+    Check mode stops at black's failure and leaves the file byte-identical.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    """
     original = f"import json\n{UNFORMATTED_MODULE}".encode()
     write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT})
     (tmp_path / "src").mkdir()
@@ -357,7 +460,13 @@ def test_check_mode_reports_unsorted_imports_without_writing(
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
 ) -> None:
-    """Check mode stops at isort's failure and leaves the file byte-identical."""
+    """
+    Check mode stops at isort's failure and leaves the file byte-identical.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    """
     original = b'"""Fixture module."""\n\nimport sys\nimport os\nimport json\n\nVALUE = (os.sep, sys.platform)\n'
     write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT})
     (tmp_path / "src/build").mkdir(parents=True)
@@ -384,7 +493,15 @@ def test_write_mode_rewrites_file_and_exits_with_flake8_result(
     extra_import: str,
     expected_exit: int,
 ) -> None:
-    """Write mode applies black and isort, then exits with flake8's result."""
+    """
+    Write mode applies black and isort, then exits with flake8's result.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    :param extra_import: Import line added to the fixture module.
+    :param expected_exit: Expected exit status.
+    """
     module = UNFORMATTED_MODULE.replace("import sys\n", f"import sys\n{extra_import}")
     write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT, "src/mod.py": module})
 
@@ -399,7 +516,13 @@ def test_ignored_codes_add_up_per_file_and_match_exactly(
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
 ) -> None:
-    """Each file ignores the union of the codes whose source matches it, and no other codes."""
+    """
+    Each file ignores the union of the codes whose source matches it, and no other codes.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    """
     lambda_module = "import os\n\nSQUARE = lambda value: value * value\n"
     write_files(
         tmp_path,
@@ -409,9 +532,9 @@ def test_ignored_codes_add_up_per_file_and_match_exactly(
                 '"tests/__init__.py" = ["E731"]\n"./tests/test_a.py" = ["F401"]\n"src/pkg/__*" = ["E731"]\n'
                 '"src/x y.py" = ["D100"]\n"other/y.py" = ["D100"]\n"src/m[[]1].py" = ["D100"]\n'
             ),
-            "tests/__init__.py": lambda_module + SHORT_DOCSTRING,
-            "tests/test_a.py": '"""Fixture module."""\n\nimport os\n' + SHORT_DOCSTRING,
-            "test_main.py": '"""Fixture module."""\n' + SHORT_DOCSTRING,
+            "tests/__init__.py": lambda_module,
+            "tests/test_a.py": '"""Fixture module."""\n\nimport os\n',
+            "test_main.py": '"""Fixture module."""\n',
             "src/pkg/__init__.py": lambda_module,
             "src/pkg/test_main.py": '"""Fixture module."""\n' + SHORT_DOCSTRING,
             "src/other/y.py": "VALUE = 1\n",
@@ -437,7 +560,13 @@ def test_per_file_ignores_apply_only_to_matching_files(
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
 ) -> None:
-    """An entry suppresses its code in the files its glob matches and nowhere else."""
+    """
+    An entry suppresses its code in the files its glob matches and nowhere else.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    """
     write_files(
         tmp_path,
         {
@@ -458,7 +587,13 @@ def test_exclude_removes_file_from_every_tool(
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
 ) -> None:
-    """Excluded files and the bundled ``.venv`` exclude are neither rewritten nor reported."""
+    """
+    Excluded files and the bundled ``.venv`` exclude are neither rewritten nor reported.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    """
     broken = f"import json\n{UNFORMATTED_MODULE}"
     write_files(
         tmp_path,
@@ -482,7 +617,13 @@ def test_file_reached_through_two_spellings_is_linted_once(
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
 ) -> None:
-    """A file under both ``src`` and ``./src/other`` is checked once."""
+    """
+    A file under both ``src`` and ``./src/other`` is checked once.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    """
     write_files(
         tmp_path,
         {"pyproject.toml": '[tool.max-lint]\npaths = ["src", "./src/other"]\n', "src/other/mod.py": "VALUE = 1\n"},
@@ -500,7 +641,13 @@ def test_path_outside_project_is_linted(
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
 ) -> None:
-    """Files outside the project are rewritten and keep the ``__init__.py`` ignores, with no tools on ``PATH``."""
+    """
+    Files outside the project are rewritten and keep the ``__init__.py`` ignores, with no tools on ``PATH``.
+
+    :param tmp_path: Directory holding ``project`` and the ``shared`` directory it lints.
+    :param monkeypatch: Changes the working directory and sets ``PATH`` to a directory that does not exist.
+    :param capfd: Captures the output of the tools the run starts.
+    """
     write_files(
         tmp_path,
         {
@@ -528,7 +675,14 @@ def test_project_modules_named_like_tools_are_not_imported(
     capfd: pytest.CaptureFixture[str],
     planted: str,
 ) -> None:
-    """A module at the project root named like a tool or a dependency never runs."""
+    """
+    A module at the project root named like a tool or a dependency never runs.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    :param planted: Path of the module named like a tool.
+    """
     marker = tmp_path / "imported"
     write_files(
         tmp_path,
@@ -551,7 +705,14 @@ def test_docstring_parsing_ignores_project_docutils_config(
     capfd: pytest.CaptureFixture[str],
     arguments: tuple[str, ...],
 ) -> None:
-    """A ``docutils.conf`` in the project, even one named by ``DOCUTILSCONFIG``, does not open the files it names."""
+    """
+    A ``docutils.conf`` in the project, even one named by ``DOCUTILSCONFIG``, does not open the files it names.
+
+    :param tmp_path: Directory holding ``project`` and the file its docutils config names.
+    :param monkeypatch: Changes the working directory and sets ``DOCUTILSCONFIG`` to the project file.
+    :param capfd: Captures the output of the tools the run starts.
+    :param arguments: Arguments given to max-lint.
+    """
     outside = tmp_path / "outside.txt"
     outside.write_text("unchanged\n")
     write_files(
@@ -577,7 +738,13 @@ def test_docstring_raw_and_include_directives_are_disabled(
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
 ) -> None:
-    """A ``raw`` directive with a URL fetches nothing, and ``raw`` and ``include`` are reported as disabled."""
+    """
+    A ``raw`` directive with a URL fetches nothing, and ``raw`` and ``include`` are reported as disabled.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    """
     BeaconHandler.received.clear()
     server = http.server.HTTPServer(("127.0.0.1", 0), BeaconHandler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
@@ -605,7 +772,13 @@ def test_symlinked_directory_listed_with_its_target_is_linted_once(
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
 ) -> None:
-    """A file reached through a symlinked directory and through its target is reported once."""
+    """
+    A file reached through a symlinked directory and through its target is reported once.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    """
     write_files(tmp_path, {"pyproject.toml": '[tool.max-lint]\npaths = ["src", "link"]\n', "src/pkg/mod.py": "VALUE = 1\n"})
     (tmp_path / "link").symlink_to(tmp_path / "src/pkg", target_is_directory=True)
 
@@ -616,41 +789,18 @@ def test_symlinked_directory_listed_with_its_target_is_linted_once(
     assert flake8_codes(output) == ["src/pkg/mod.py:1:1: D100"]
 
 
-@pytest.mark.parametrize(
-    ("listed", "directory", "link"),
-    [("real", "real", "tests"), ("link", "tests", "link")],
-    ids=["test-path-is-link", "path-is-link"],
-)
-def test_symlinked_test_path_exempts_the_resolved_files(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capfd: pytest.CaptureFixture[str],
-    listed: str,
-    directory: str,
-    link: str,
-) -> None:
-    """A file whose resolved location is under a test path is exempt from DOC under any spelling."""
-    write_files(
-        tmp_path,
-        {
-            "pyproject.toml": f'[tool.max-lint]\npaths = ["{listed}"]\ntest-paths = ["tests"]\n',
-            f"{directory}/test_mod.py": UNDOCUMENTED_FUNCTION,
-        },
-    )
-    (tmp_path / link).symlink_to(tmp_path / directory, target_is_directory=True)
-
-    exit_code, output = lint(tmp_path, monkeypatch, capfd, "--check")
-
-    assert exit_code == 0
-    assert flake8_codes(output) == []
-
-
 def test_unresolvable_python_entries_are_skipped(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
 ) -> None:
-    """Dangling and looping symlinks and a device named like Python files are left out and the rest is linted."""
+    """
+    Dangling and looping symlinks and a device named like Python files are left out and the rest is linted.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    """
     write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT, "src/mod.py": FORMATTED_MODULE})
     (tmp_path / "src/dangling.py").symlink_to("nowhere.py")
     (tmp_path / "src/loop.py").symlink_to("loop.py")
@@ -668,7 +818,13 @@ def test_only_unresolvable_python_entries_is_a_configuration_error(
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
 ) -> None:
-    """A project whose only Python entry is a dangling symlink has no Python files to lint."""
+    """
+    A project whose only Python entry is a dangling symlink has no Python files to lint.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    """
     write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT})
     (tmp_path / "src").mkdir()
     (tmp_path / "src/dangling.py").symlink_to("nowhere.py")
@@ -686,7 +842,13 @@ def test_case_variant_spellings_are_linted_once(
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
 ) -> None:
-    """On a case-insensitive file system a file reached as ``src`` and ``SRC/pkg`` is reported once."""
+    """
+    On a case-insensitive file system a file reached as ``src`` and ``SRC/pkg`` is reported once.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    """
     write_files(tmp_path, {"pyproject.toml": '[tool.max-lint]\npaths = ["src", "SRC/pkg"]\n', "src/pkg/mod.py": "VALUE = 1\n"})
 
     if not (tmp_path / "SRC").exists():
@@ -698,31 +860,13 @@ def test_case_variant_spellings_are_linted_once(
     assert flake8_codes(output) == ["src/pkg/mod.py:1:1: D100"]
 
 
-def test_case_variant_test_path_exempts_its_files(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capfd: pytest.CaptureFixture[str],
-) -> None:
-    """On a case-insensitive file system a test path spelled ``Tests`` exempts the files under ``tests`` from DOC."""
-    write_files(
-        tmp_path,
-        {
-            "pyproject.toml": '[tool.max-lint]\npaths = ["tests"]\ntest-paths = ["Tests"]\n',
-            "tests/test_x.py": UNDOCUMENTED_FUNCTION,
-        },
-    )
-
-    if not (tmp_path / "Tests").exists():
-        pytest.skip("the file system is case-sensitive")
-
-    exit_code, output = lint(tmp_path, monkeypatch, capfd, "--check")
-
-    assert exit_code == 0
-    assert flake8_codes(output) == []
-
-
 def test_fifo_and_endless_device_are_left_out(tmp_path: Path) -> None:
-    """A FIFO and a symlink to ``/dev/zero`` named like Python files are not linted."""
+    """
+    A FIFO and a symlink to ``/dev/zero`` named like Python files are not linted.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :raises subprocess.TimeoutExpired: when the run does not end within the time limit.
+    """
     write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT, "src/mod.py": FORMATTED_MODULE})
     os.mkfifo(tmp_path / "src/fifo.py")
     (tmp_path / "src/zero.py").symlink_to("/dev/zero")
@@ -746,34 +890,6 @@ def test_fifo_and_endless_device_are_left_out(tmp_path: Path) -> None:
     assert "1 file would be left unchanged." in output
 
 
-def test_symlinked_file_is_a_test_file_only_if_its_target_is(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capfd: pytest.CaptureFixture[str],
-) -> None:
-    """A symlinked file is exempt from DOC exactly when its target is under a test path."""
-    write_files(
-        tmp_path,
-        {
-            "pyproject.toml": '[tool.max-lint]\npaths = ["src"]\ntest-paths = ["tests"]\n',
-            "other/mod.py": UNDOCUMENTED_FUNCTION,
-            "tests/test_real.py": UNDOCUMENTED_FUNCTION,
-        },
-    )
-    (tmp_path / "src").mkdir()
-    (tmp_path / "src/link.py").symlink_to(tmp_path / "tests/test_real.py")
-    (tmp_path / "tests/test_link.py").symlink_to(tmp_path / "other/mod.py")
-
-    exit_code, output = lint(tmp_path, monkeypatch, capfd, "--check")
-
-    assert exit_code == 1
-    assert flake8_codes(output) == [
-        "tests/test_link.py:4:1: DOC101",
-        "tests/test_link.py:4:1: DOC103",
-        "tests/test_link.py:4:1: DOC201",
-    ]
-
-
 @pytest.mark.parametrize("arguments", [("--check",), ()], ids=["check", "write"])
 def test_mypy_runs_last_over_source_paths(
     tmp_path: Path,
@@ -781,7 +897,14 @@ def test_mypy_runs_last_over_source_paths(
     capfd: pytest.CaptureFixture[str],
     arguments: tuple[str, ...],
 ) -> None:
-    """An unannotated function under ``paths`` fails the mypy step with mypy's own error."""
+    """
+    An unannotated function under ``paths`` fails the mypy step with mypy's own error.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    :param arguments: Arguments given to max-lint.
+    """
     write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT, "src/mod.py": UNTYPED_FUNCTION})
 
     exit_code, output = lint(tmp_path, monkeypatch, capfd, *arguments)
@@ -791,21 +914,44 @@ def test_mypy_runs_last_over_source_paths(
     assert "Found 1 error in 1 file (checked 1 source file)" in output
 
 
-def test_mypy_skips_test_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixture[str]) -> None:
-    """The same unannotated function under ``test-paths`` does not fail the mypy step."""
+@pytest.mark.parametrize(
+    ("source", "error"),
+    [
+        (UNTYPED_FUNCTION, MYPY_ERROR.replace("src/mod.py", "tests/test_mod.py")),
+        (EXPLICIT_ANY, 'tests/test_mod.py:5: error: Explicit "Any" is not allowed'),
+    ],
+    ids=["untyped-function", "explicit-any"],
+)
+def test_mypy_checks_test_paths(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+    source: str,
+    error: str,
+) -> None:
+    """
+    A file under ``test-paths`` fails the mypy step and is counted among the checked files.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    :param source: Contents of the fixture module.
+    :param error: Error mypy is expected to report.
+    """
     write_files(
         tmp_path,
         {
             "pyproject.toml": '[tool.max-lint]\npaths = ["src"]\ntest-paths = ["tests"]\n',
             "src/mod.py": FORMATTED_MODULE,
-            "tests/test_mod.py": UNTYPED_FUNCTION,
+            "tests/test_mod.py": source,
         },
     )
 
     exit_code, output = lint(tmp_path, monkeypatch, capfd, "--check")
 
-    assert exit_code == 0
-    assert "Success: no issues found in 1 source file" in output
+    assert exit_code == 1
+    assert error in output
+    assert "Found 1 error in 1 file (checked 2 source files)" in output
 
 
 def test_mypy_does_not_run_after_a_flake8_failure(
@@ -813,7 +959,13 @@ def test_mypy_does_not_run_after_a_flake8_failure(
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
 ) -> None:
-    """A flake8 failure stops the command before mypy starts."""
+    """
+    A flake8 failure stops the command before mypy starts.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    """
     write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT, "src/mod.py": "def run():\n    pass\n"})
 
     exit_code, output = lint(tmp_path, monkeypatch, capfd, "--check")
@@ -831,7 +983,7 @@ def test_mypy_does_not_run_after_a_flake8_failure(
             'src/mod.py:5: error: Redundant cast to "int"',
         ),
         (
-            '"""Fixture module."""\n\n\ndef run(value: int = None) -> None:\n    """\n    Do nothing.\n\n    :param value: unused.\n    """\n',
+            '"""Fixture module."""\n\n\ndef run(value: int = None) -> None:\n    """\n    Do nothing.\n\n    :param value: Defaults to ``None`` against its ``int`` annotation.\n    """\n',
             'src/mod.py:4: error: Incompatible default for parameter "value"',
         ),
         (BARE_GENERIC, 'src/mod.py:3: error: Missing type arguments for generic type "dict"'),
@@ -847,7 +999,15 @@ def test_mypy_locked_settings_apply_without_project_settings(
     source: str,
     error: str,
 ) -> None:
-    """A project with no ``[tool.mypy]`` table is checked with the locked settings."""
+    """
+    A project with no ``[tool.mypy]`` table is checked with the locked settings.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    :param source: Contents of the fixture module.
+    :param error: Error mypy is expected to report.
+    """
     write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT, "src/mod.py": source})
 
     exit_code, output = lint(tmp_path, monkeypatch, capfd, "--check")
@@ -856,8 +1016,30 @@ def test_mypy_locked_settings_apply_without_project_settings(
     assert error in output
 
 
+def test_mypy_command_receives_the_files_flake8_receives(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    The mypy command lists the files under ``paths`` and ``test-paths`` that the flake8 command lists.
+
+    :param tmp_path: Project directory, also passed as the scratch directory.
+    :param monkeypatch: Changes the working directory so the project's ``pyproject.toml`` resolves.
+    """
+    pyproject = '[tool.max-lint]\npaths = ["src"]\ntest-paths = ["tests"]\n'
+    write_files(tmp_path, {"pyproject.toml": pyproject, "src/mod.py": FORMATTED_MODULE, "tests/test_mod.py": FORMATTED_MODULE})
+    monkeypatch.chdir(tmp_path)
+
+    commands = lint_commands(load_config(Path("pyproject.toml")), check=True, scratch=tmp_path)
+
+    assert commands[2][-2:] == ["src/mod.py", "tests/test_mod.py"]
+    assert commands[-1][-2:] == ["./src/mod.py", "./tests/test_mod.py"]
+
+
 def test_mypy_command_carries_the_locked_settings(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """The mypy command passes the project's pyproject.toml and the locked flags."""
+    """
+    The mypy command passes the project's pyproject.toml and the locked flags.
+
+    :param tmp_path: Project directory, also passed as the scratch directory.
+    :param monkeypatch: Changes the working directory so the project's ``pyproject.toml`` resolves.
+    """
     write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT, "src/mod.py": FORMATTED_MODULE})
     monkeypatch.chdir(tmp_path)
 
@@ -888,7 +1070,13 @@ def test_mypy_rejects_an_unimported_class_in_an_annotation(
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
 ) -> None:
-    """A class from an ``ignore_missing_imports`` module fails when used in an annotation."""
+    """
+    A class from an ``ignore_missing_imports`` module fails when used in an annotation.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    """
     write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT + UNTYPED_LIBRARY_OVERRIDE, "src/mod.py": UNTYPED_LIBRARY_CLASS})
 
     exit_code, output = lint(tmp_path, monkeypatch, capfd, "--check")
@@ -905,7 +1093,15 @@ def test_mypy_reads_project_overrides(
     overrides: str,
     exit_code: int,
 ) -> None:
-    """A ``warn_unreachable`` override in ``[[tool.mypy.overrides]]`` decides whether an unreachable branch fails."""
+    """
+    A ``warn_unreachable`` override in ``[[tool.mypy.overrides]]`` decides whether an unreachable branch fails.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    :param overrides: mypy settings appended to the project's ``pyproject.toml``.
+    :param exit_code: Expected exit status.
+    """
     write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT + overrides, "src/mod.py": UNREACHABLE_BRANCH})
 
     result, output = lint(tmp_path, monkeypatch, capfd, "--check")
@@ -919,7 +1115,13 @@ def test_mypy_ignores_other_mypy_config_files(
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
 ) -> None:
-    """A ``mypy.ini`` that relaxes a locked setting for a module does not change the result."""
+    """
+    A ``mypy.ini`` that relaxes a locked setting for a module does not change the result.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    """
     write_files(
         tmp_path,
         {
@@ -940,7 +1142,13 @@ def test_mypy_loads_plugins_named_in_the_project(
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
 ) -> None:
-    """A plugin given as a file path in ``[tool.mypy]`` is loaded."""
+    """
+    A plugin given as a file path in ``[tool.mypy]`` is loaded.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    """
     marker = tmp_path / "loaded"
     write_files(
         tmp_path,
@@ -962,7 +1170,13 @@ def test_mypy_leaves_out_excluded_files(
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
 ) -> None:
-    """A file matched by ``exclude`` is not type-checked."""
+    """
+    A file matched by ``exclude`` is not type-checked.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    """
     write_files(
         tmp_path,
         {
@@ -983,7 +1197,13 @@ def test_mypy_checks_a_file_reached_twice_once(
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
 ) -> None:
-    """A file reached through a symlinked directory and through its target is type-checked once."""
+    """
+    A file reached through a symlinked directory and through its target is type-checked once.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    """
     write_files(tmp_path, {"pyproject.toml": '[tool.max-lint]\npaths = ["src", "link"]\n', "src/pkg/mod.py": UNTYPED_FUNCTION})
     (tmp_path / "link").symlink_to(tmp_path / "src/pkg", target_is_directory=True)
 
@@ -1012,7 +1232,15 @@ def test_locked_mypy_key_is_rejected_before_any_tool_runs(
     overrides: str,
     place: str,
 ) -> None:
-    """A locked key in the project's mypy settings exits 2, naming the key, and rewrites nothing."""
+    """
+    A locked key in the project's mypy settings exits 2, naming the key, and rewrites nothing.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    :param overrides: mypy settings appended to the project's ``pyproject.toml``.
+    :param place: Where the message says the key is set.
+    """
     write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT + overrides, "src/mod.py": UNFORMATTED_MODULE})
 
     exit_code, output = lint(tmp_path, monkeypatch, capfd)
@@ -1027,7 +1255,13 @@ def test_mypy_workers_do_not_import_project_modules(
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
 ) -> None:
-    """A root module named like a mypy dependency does not run in mypy's worker processes."""
+    """
+    A root module named like a mypy dependency does not run in mypy's worker processes.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    """
     marker = tmp_path / "imported"
     write_files(
         tmp_path,
@@ -1050,7 +1284,13 @@ def test_mypy_ignores_the_python_executable_named_by_the_project(
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
 ) -> None:
-    """A ``python_executable`` in ``[tool.mypy]`` is not run."""
+    """
+    A ``python_executable`` in ``[tool.mypy]`` is not run.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    """
     marker = tmp_path / "imported"
     write_files(
         tmp_path,
@@ -1073,7 +1313,13 @@ def test_mypy_checks_a_file_whose_name_starts_with_at_sign(
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
 ) -> None:
-    """A file named ``@x.py`` is type-checked, not read as a file of arguments."""
+    """
+    A file named ``@x.py`` is type-checked, not read as a file of arguments.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    """
     write_files(tmp_path, {"pyproject.toml": '[tool.max-lint]\npaths = ["@x.py"]\n', "@x.py": MISTYPED_VALUE})
 
     exit_code, output = lint(tmp_path, monkeypatch, capfd, "--check")

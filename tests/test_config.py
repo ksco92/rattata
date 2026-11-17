@@ -8,7 +8,13 @@ from max_lint.config import Config, ConfigError, load_config
 
 
 def write_pyproject(root: Path, text: str) -> Path:
-    """Write ``pyproject.toml`` under ``root`` with ``src`` and ``tests`` directories beside it."""
+    """
+    Write ``pyproject.toml`` under ``root`` with ``src`` and ``tests`` directories beside it.
+
+    :param root: Directory the project is created in.
+    :param text: Contents of the ``pyproject.toml``.
+    :return: Path of the written ``pyproject.toml``.
+    """
     (root / "src").mkdir()
     (root / "tests").mkdir()
     pyproject = root / "pyproject.toml"
@@ -18,7 +24,11 @@ def write_pyproject(root: Path, text: str) -> Path:
 
 
 def test_load_config_reads_every_key(tmp_path: Path) -> None:
-    """A path may point outside the project directory."""
+    """
+    A path may point outside the project directory.
+
+    :param tmp_path: Directory holding the project and a shared directory beside it.
+    """
     (tmp_path / "shared").mkdir()
     project = tmp_path / "project"
     project.mkdir()
@@ -50,7 +60,11 @@ per-file-ignores = { "src/legacy/*" = ["D100", "D103"] }
 
 
 def test_load_config_defaults_optional_keys(tmp_path: Path) -> None:
-    """Without requires-python black gets no target version."""
+    """
+    Without requires-python black gets no target version.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    """
     pyproject = write_pyproject(tmp_path, '[tool.max-lint]\npaths = ["src"]\n')
 
     assert load_config(pyproject) == Config(
@@ -65,7 +79,11 @@ def test_load_config_defaults_optional_keys(tmp_path: Path) -> None:
 
 
 def test_load_config_without_pyproject_names_the_file(tmp_path: Path) -> None:
-    """Point at a directory with no pyproject.toml."""
+    """
+    Point at a directory with no pyproject.toml.
+
+    :param tmp_path: Directory that holds no ``pyproject.toml``.
+    """
     with pytest.raises(ConfigError, match="pyproject.toml not found"):
         load_config(tmp_path / "pyproject.toml")
 
@@ -121,7 +139,13 @@ def test_load_config_without_pyproject_names_the_file(tmp_path: Path) -> None:
     ],
 )
 def test_load_config_rejects_invalid_settings(tmp_path: Path, text: str, message: str) -> None:
-    """Each message names the offending key or table."""
+    """
+    Each message names the offending key or table.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param text: Contents of the ``pyproject.toml`` under test.
+    :param message: Pattern the error message must match.
+    """
     pyproject = write_pyproject(tmp_path, text)
 
     with pytest.raises(ConfigError, match=message):
@@ -167,7 +191,14 @@ def test_load_config_rejects_invalid_settings(tmp_path: Path, text: str, message
     ids=["table", "override-list", "override-after-table"],
 )
 def test_load_config_rejects_locked_mypy_keys(tmp_path: Path, key: str, text: str, place: str) -> None:
-    """A locked mypy key, in any spelling mypy accepts, is rejected with the key and where it was set."""
+    """
+    A locked mypy key, in any spelling mypy accepts, is rejected with the key and where it was set.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param key: Locked mypy key the project sets.
+    :param text: Settings template the key is formatted into.
+    :param place: Pattern for where the message says the key is set.
+    """
     pyproject = write_pyproject(tmp_path, '[tool.max-lint]\npaths = ["src"]\n\n' + text.format(key=key))
 
     with pytest.raises(ConfigError, match=f"'{key}' is set in {place}, but max-lint fixes it"):
@@ -183,7 +214,12 @@ def test_load_config_rejects_locked_mypy_keys(tmp_path: Path, key: str, text: st
     ],
 )
 def test_load_config_rejects_malformed_mypy_tables(tmp_path: Path, text: str) -> None:
-    """A mypy table or overrides list of the wrong type is a configuration error."""
+    """
+    A mypy table or overrides list of the wrong type is a configuration error.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param text: Contents of the ``pyproject.toml`` with the malformed table.
+    """
     pyproject = write_pyproject(tmp_path, text)
 
     with pytest.raises(ConfigError, match=r"'mypy' in \[tool\] must be a table and its 'overrides' a list of tables"):

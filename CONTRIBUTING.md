@@ -26,6 +26,7 @@ What each command does is under [Commands and exit codes](README.md#commands-and
 ## Rules
 
 - The bundled style is not relaxed to make a change pass. Fix what the run reports in the code instead of adding `per-file-ignores`, `exclude`, `coverage-omit`, `# noqa`, `# type: ignore` or `# pragma: no cover`, and do not change a setting under `src/max_lint/style/` to get a change through.
+- Tests are linted and type-checked like the package's own code, so every test function documents its parameters, return and raises.
 - A change that alters behaviour comes with tests, and `uv run max-lint --check` passes before it is proposed.
 
 ## Release
