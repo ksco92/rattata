@@ -885,19 +885,19 @@ def test_case_variant_spellings_are_linted_once(
     assert flake8_codes(output) == ["src/pkg/mod.py:1:1: D100"]
 
 
-def test_fifo_and_endless_device_are_left_out(tmp_path: Path) -> None:
+def run_check_command(root: Path, piped: str = "") -> tuple[int, str]:
     """
-    A FIFO and a symlink to ``/dev/zero`` named like Python files are not linted.
+    Run ``max-lint lint --check`` as a process in ``root`` and return its exit code and combined output.
 
-    :param tmp_path: Project directory the fixture files are written to.
+    :param root: Project directory the process runs in.
+    :param piped: Text written to the process's standard input.
+    :return: Exit code and combined output.
     :raises subprocess.TimeoutExpired: when the run does not end within the time limit.
     """
-    write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT, "src/mod.py": FORMATTED_MODULE})
-    os.mkfifo(tmp_path / "src/fifo.py")
-    (tmp_path / "src/zero.py").symlink_to("/dev/zero")
     process = subprocess.Popen(
         [str(Path(sys.executable).parent / "max-lint"), "lint", "--check"],
-        cwd=tmp_path,
+        cwd=root,
+        stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
@@ -905,14 +905,79 @@ def test_fifo_and_endless_device_are_left_out(tmp_path: Path) -> None:
     )
 
     try:
-        output, _ = process.communicate(timeout=60)
+        output, _ = process.communicate(piped, timeout=60)
     except subprocess.TimeoutExpired:
         os.killpg(process.pid, signal.SIGKILL)
         process.communicate()
         raise
 
-    assert process.returncode == 0
+    return process.returncode, output
+
+
+def test_fifo_and_endless_device_are_left_out(tmp_path: Path) -> None:
+    """
+    A FIFO and a symlink to ``/dev/zero`` named like Python files are not linted.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    """
+    write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT, "src/mod.py": FORMATTED_MODULE})
+    os.mkfifo(tmp_path / "src/fifo.py")
+    (tmp_path / "src/zero.py").symlink_to("/dev/zero")
+
+    exit_code, output = run_check_command(tmp_path)
+
+    assert exit_code == 0
     assert "1 file would be left unchanged." in output
+
+
+def test_file_named_dash_in_a_subdirectory_is_linted_not_read_from_stdin(tmp_path: Path) -> None:
+    """
+    ``sub/-`` holds what only black flags; the piped text is clean, so a tool reading it would pass.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    """
+    write_files(tmp_path, {"pyproject.toml": '[tool.max-lint]\npaths = ["sub/-"]\n', "sub/-": "VALUE = {'a':1}\n"})
+
+    exit_code, output = run_check_command(tmp_path, piped=FORMATTED_MODULE)
+
+    assert exit_code == 1
+    assert "would reformat sub/-" in output
+
+
+@pytest.mark.parametrize("arguments", [("--check",), ()], ids=["check", "write"])
+@pytest.mark.parametrize(
+    "settings",
+    ['paths = ["-"]', 'paths = ["./-"]', 'paths = ["src"]\ntest-paths = ["-"]', 'paths = ["src", "-"]'],
+    ids=["paths", "dot-slash", "test-paths", "beside-others"],
+)
+def test_file_named_dash_stops_the_run_before_any_tool_starts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+    settings: str,
+    arguments: tuple[str, ...],
+) -> None:
+    """
+    A file ``-`` in the project root is rejected with exit status 2 and no command runs.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory and to record started commands.
+    :param capfd: Captures the output of the run.
+    :param settings: Lines of the ``[tool.max-lint]`` table.
+    :param arguments: Arguments given to ``max-lint lint``.
+    """
+    write_files(
+        tmp_path,
+        {"pyproject.toml": f"[tool.max-lint]\n{settings}\n", "src/mod.py": FORMATTED_MODULE, "-": FORMATTED_MODULE},
+    )
+    started: list[list[str]] = []
+    monkeypatch.setattr("max_lint.cli.subprocess.run", lambda command, **_: started.append(command))
+
+    exit_code, output = lint(tmp_path, monkeypatch, capfd, *arguments)
+
+    assert exit_code == 2
+    assert "read as standard input; rename the file." in output
+    assert started == []
 
 
 @pytest.mark.parametrize("arguments", [("--check",), ()], ids=["check", "write"])
