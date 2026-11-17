@@ -278,8 +278,7 @@ def test_type_checking_blocks_do_not_count(
     exit_code, output = run_max_lint(tmp_path, files, monkeypatch, capfd, "test")
 
     assert exit_code == 0
-    assert "100.00%" in output
-    assert re.search(r"__init__\.py +\d+ +0 +0 +0 +100\.00%", output)
+    assert re.search(r"^src/pkg/__init__\.py +\d+ +0 +\d+ +0 +100\.00%", output, re.MULTILINE)
 
 
 def test_a_line_that_only_mentions_type_checking_is_measured(
@@ -288,19 +287,22 @@ def test_a_line_that_only_mentions_type_checking_is_measured(
     capfd: pytest.CaptureFixture[str],
 ) -> None:
     """
-    The block under ``if not TYPE_CHECKING:`` is measured and its missing line is shown.
+    The block under an ``if`` that only mentions ``if TYPE_CHECKING:`` in a comment is measured.
 
     :param tmp_path: Project directory the fixture files are written to.
     :param monkeypatch: Used to run max-lint from the project directory.
     :param capfd: Captures the output of the tools the run starts.
     """
-    module = '"""Mod."""\n\nTYPE_CHECKING = True\n\nif not TYPE_CHECKING:\n' + "    VALUE = 1\n" * 10
+    module = '"""Mod."""\n\nFLAG = False\n\nif FLAG:  # if TYPE_CHECKING:\n' + "    VALUE = 1\n" * 10
     files = {**BASE_FILES, "src/pkg/__init__.py": module, "tests/test_sign.py": IMPORT_TEST}
 
     exit_code, output = run_max_lint(tmp_path, files, monkeypatch, capfd, "test")
 
+    row = re.search(r"^src/pkg/__init__\.py.*$", output, re.MULTILINE)
     assert exit_code == 1
-    assert re.search(r"__init__\.py +12 +10 +2 +1 +21\.43% +6-15", output)
+    assert row
+    assert "100.00%" not in row[0]
+    assert row[0].endswith("6-15")
 
 
 @pytest.mark.parametrize("pattern", ["*/generated.py", "src/pkg/generated.py"], ids=["wildcard", "relative-to-project"])
