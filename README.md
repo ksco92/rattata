@@ -3,7 +3,7 @@
 [![ci](https://github.com/ksco92/rattata/actions/workflows/ci.yml/badge.svg)](https://github.com/ksco92/rattata/actions/workflows/ci.yml)
 [![PyPI version](https://img.shields.io/pypi/v/max-lint)](https://pypi.org/project/max-lint/)
 
-**One command that runs black, isort, flake8, mypy and pytest with a single shared configuration. Every tool is pinned to an exact version.**
+**One command that runs black, isort, flake8, mypy and pytest with a single shared configuration.** Every tool is pinned to an exact version.
 
 Status (November 2026): max-lint is published on PyPI. The `lint` command runs the formatters and linters with the bundled style, the `test` command runs pytest with branch coverage and a coverage floor, and a bare `max-lint` runs both.
 
@@ -11,6 +11,7 @@ Status (November 2026): max-lint is published on PyPI. The `lint` command runs t
 
 - [Install](#install)
 - [Usage](#usage)
+- [Adopting in an existing project](#adopting-in-an-existing-project)
 - [Configuration](#configuration)
 - [Bundled style](#bundled-style)
 - [Project mypy and pytest settings](#project-mypy-and-pytest-settings)
@@ -29,7 +30,7 @@ uv add --dev max-lint
 
 ## Usage
 
-A project declares what it owns in a `[tool.max-lint]` table of its `pyproject.toml`. Run the commands with `uv run` from the directory that holds `pyproject.toml`. This project, with max-lint added as above:
+A project declares what it owns in a `[tool.max-lint]` table of its `pyproject.toml`. Run the commands with `uv run` from the directory that holds `pyproject.toml`. This project, with max-lint added as above (in a code block that holds several files, each `# path` comment starts a file):
 
 ```toml
 # pyproject.toml
@@ -50,9 +51,8 @@ pythonpath = ["src"]
 ```python
 # src/inventory/__init__.py
 """Inventory tracking."""
-```
 
-```python
+
 # src/inventory/stock.py
 """Stock levels per item."""
 
@@ -65,9 +65,8 @@ def restock(levels: dict[str, int], item: str, count: int) -> dict[str, int]:
     :return: the updated stock.
     """
     return {**levels, item: levels.get(item, 0)+count}
-```
 
-```python
+
 # tests/test_stock.py
 """Tests for stock levels."""
 
@@ -103,7 +102,7 @@ src/inventory/stock.py:4:1: DOC101 Function `restock`: Docstring contains fewer 
 src/inventory/stock.py:4:1: DOC103 Function `restock`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [count: int, item: str].
 ```
 
-Once flake8 passes, mypy runs last. With `src/inventory/__init__.py` and `tests/test_stock.py` as the previous command left them, a completed `restock` docstring in `src/inventory/stock.py`:
+Once flake8 passes, mypy runs last. With `src/inventory/__init__.py` and `tests/test_stock.py` as the previous command left them, a completed `restock` docstring in `src/inventory/stock.py` and a module `src/inventory/report.py` that passes a string where `restock` expects an int, in one block where each `# path` comment starts a file:
 
 ```python
 # src/inventory/stock.py
@@ -120,11 +119,8 @@ def restock(levels: dict[str, int], item: str, count: int) -> dict[str, int]:
     :return: the updated stock.
     """
     return {**levels, item: levels.get(item, 0) + count}
-```
 
-and a new module that passes a string where `restock` expects an int:
 
-```python
 # src/inventory/report.py
 """Stock report."""
 
@@ -188,6 +184,14 @@ All done! ✨ 🍰 ✨
 Success: no issues found in 3 source files
 ```
 
+## Adopting in an existing project
+
+A first run on code written to another style usually meets three things:
+- Trailing commas: `max-lint lint` adds the missing ones, so the first run rewrites many files. `max-lint lint --check` reports them as flake8 `C81x` findings, such as `C812 missing trailing comma`, once black accepts every file; until then it stops at black with `would reformat <file>`. The shapes that write mode leaves for hand-fixing are under [Known limitations](#known-limitations).
+- Libraries without type information: mypy reports `error: Skipping analyzing "boto3": module is installed, but missing library stubs or py.typed marker  [import-untyped]`. Add the library's stub package to the project's dev dependencies, with the extras for the services in use and at the version of the project's `boto3`, for example `uv add --dev "boto3-stubs[s3]==1.44.4"` for boto3 1.44.4. mypy then checks every call into the library, such as `Argument "Bucket" to "create_bucket" of "S3Client" has incompatible type "int"; expected "str"  [arg-type]`.
+  - `ignore_missing_imports = true` in `[tool.mypy]` hides the message instead, but everything imported from the library becomes `Any`: its calls go unchecked and annotations that use its types are reported as `no-any-unimported`.
+- Methods and tests: flake8 reports `ANN101` and `ANN102` on a `self` or `cls` without an annotation, so write `self: Self` and `cls: type[Self]` with `Self` from `typing`. Test functions are held to the same rules as source: without `-> None` and a docstring they get `ANN201` and `D103`.
+
 ## Configuration
 
 The `[tool.max-lint]` table takes these keys and no others:
@@ -226,7 +230,7 @@ mypy checks the files under `paths` and `test-paths`, the files the other lint s
 python_version = "3.13"
 ```
 
-A library without type information gets a stub package in the project's dev dependencies, such as `boto3-stubs` for boto3. A project that sets one of the locked settings in `[tool.mypy]` or in an override, under any name mypy accepts for it (`allow_untyped_defs`, for example), gets exit status 2 before any tool runs. mypy resolves third-party imports from the environment max-lint runs in, and writes its cache to `.mypy_cache` in the current directory. A plugin named by module must be importable from that environment because the working directory is not on the import path; a plugin given as a file path works. The project's `[tool.pytest.ini_options]` is read, so keys such as `pythonpath` work.
+A library without type information gets a stub package in the project's dev dependencies, as described under [Adopting in an existing project](#adopting-in-an-existing-project). A project that sets one of the locked settings in `[tool.mypy]` or in an override, under any name mypy accepts for it (`allow_untyped_defs`, for example), gets exit status 2 before any tool runs. mypy resolves third-party imports from the environment max-lint runs in, and writes its cache to `.mypy_cache` in the current directory. A plugin named by module must be importable from that environment because the working directory is not on the import path; a plugin given as a file path works. The project's `[tool.pytest.ini_options]` is read, so keys such as `pythonpath` work.
 
 ## Commands and exit codes
 
@@ -260,8 +264,7 @@ Exit status 2 and a one-line message on stderr mean a configuration error in `py
 
 ## Contributing
 
-Setup, the checks a change must pass and the rules for the bundled style are in [CONTRIBUTING.md](https://github.com/ksco92/rattata/blob/main/CONTRIBUTING.md).
-max-lint is maintained by Rodrigo Carvajal; bugs and proposals go in [GitHub issues](https://github.com/ksco92/rattata/issues).
+Setup, the checks a change must pass and the rules for the bundled style are in [CONTRIBUTING.md](https://github.com/ksco92/rattata/blob/main/CONTRIBUTING.md). max-lint is maintained by Rodrigo Carvajal; bugs and proposals go in [GitHub issues](https://github.com/ksco92/rattata/issues).
 
 ## License
 
