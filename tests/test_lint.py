@@ -124,6 +124,7 @@ UTF7_SUBSCRIPT = (
 LONG_ITEMS = f'ITEMS = [\n    "{LONG}"\n]\n'
 DOC_ITEMS = f'"""Doc."""\n\n{LONG_ITEMS}'
 WITH_COMMA = DOC_ITEMS.replace('"\n]', '",\n]')
+WITH_ITEM = 'with (open("a") as f,):\n    pass\n'
 MYPY_ERROR = "src/mod.py:4: error: Function is missing a return type annotation  [no-untyped-def]"
 UNREACHABLE_BRANCH = (
     '"""Fixture module."""\n\n\ndef run(value: int) -> None:\n    """\n    Print a string.\n\n    :param value: Printed when it is a string.\n    """\n'
@@ -1437,6 +1438,7 @@ def test_multi_line_fstring_field_keeps_its_finding(
             marks=pytest.mark.skipif(sys.version_info < (3, 14), reason="template strings need Python 3.14"),
         ),
         pytest.param(UTF7_SUBSCRIPT, 14, id="utf-7-subscript"),
+        pytest.param('"""Fixture module."""\n\nVALUE = f"{max(\n    1,\n    2,\n)=}"\n', 8, id="debug-field"),
     ],
 )
 def test_rewrite_that_changes_the_syntax_tree_is_not_written(
@@ -1554,22 +1556,22 @@ def test_file_that_is_not_utf8_and_has_no_coding_line_stops_the_run_at_black(
 
 @pytest.mark.parametrize(
     "source",
-    [WITH_COMMA, '"""Doc."""\n\nN = f"{max(\n    1,\n    2,\n)}"\n'],
-    ids=["nothing-missing", "layout-only"],
+    [WITH_COMMA, '"""Doc."""\n\nN = f"{max(\n    1,\n    2,\n)}"\n', f'"""Doc."""\n\n{WITH_ITEM}', DOC_ITEMS + WITH_ITEM],
+    ids=["nothing-missing", "layout-only", "comma-removed", "comma-removed-and-added"],
 )
-def test_file_the_comma_step_adds_no_comma_to_is_not_written(
+def test_file_that_gains_no_comma_is_not_written(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
     source: str,
 ) -> None:
     """
-    The file keeps its modification time and reports the same flake8 codes after a write run as under check mode.
+    The file keeps its bytes and modification time and reports the same flake8 codes after a write run as under check mode.
 
     :param tmp_path: Project directory the fixture files are written to.
     :param monkeypatch: Used to run max-lint from the project directory.
     :param capfd: Captures the output of the tools the run starts.
-    :param source: Module the tool would leave as it is or only lay out differently.
+    :param source: Module whose rewrite would insert no comma, or would also change something else.
     """
     module = tmp_path / "src/mod.py"
     write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT, "src/mod.py": source})
@@ -1578,5 +1580,44 @@ def test_file_the_comma_step_adds_no_comma_to_is_not_written(
     _, check = lint(tmp_path, monkeypatch, capfd, "--check")
     _, write = lint(tmp_path, monkeypatch, capfd)
 
-    assert module.stat().st_mtime_ns == 10**9
+    assert (module.read_text(), module.stat().st_mtime_ns) == (source, 10**9)
     assert flake8_codes(write) == flake8_codes(check)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "# fmt: off\nVALUE = [1, 2,]\n# fmt: on\n",
+        "# fmt: off\nMATRIX = [1, 0,\n          0, 1]\n# fmt: on\n",
+        "VALUE = [1, 2,]  # fmt: skip\n",
+    ],
+    ids=["fmt-off-trailing-comma", "fmt-off-matrix", "fmt-skip"],
+)
+def test_file_that_opts_out_of_black_is_left_alone(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+    source: str,
+) -> None:
+    """
+    The file keeps its bytes and its flake8 codes, while another file in the same run gains its comma.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    :param source: Module body holding a black formatting directive.
+    """
+    module = tmp_path / "src/mod.py"
+    write_files(
+        tmp_path,
+        {"pyproject.toml": PLAIN_PYPROJECT, "src/mod.py": f'"""Doc."""\n\n{source}', "src/ordinary.py": DOC_ITEMS},
+    )
+
+    _, check = lint(tmp_path, monkeypatch, capfd, "--check")
+    _, write = lint(tmp_path, monkeypatch, capfd)
+
+    assert module.read_text() == f'"""Doc."""\n\n{source}'
+    assert (tmp_path / "src/ordinary.py").read_text() == WITH_COMMA
+    assert [code for code in flake8_codes(write) if "mod.py" in code] == [
+        code for code in flake8_codes(check) if "mod.py" in code
+    ]

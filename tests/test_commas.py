@@ -17,12 +17,14 @@ if sys.platform != "win32":
     [
         (b"x = [\n    1,\n    2\n]\n", b"x = [\n    1,\n    2,\n]\n"),
         (b"\xff\n", b"\xff\n"),
+        (b"with (open(name) as handle,):\n    pass\n", b"with (open(name) as handle,):\n    pass\n"),
+        (b"x = [  # fmt:skip\n    1\n]\n", b"x = [  # fmt:skip\n    1\n]\n"),
         (
             b"# coding: utf-7\nx = print(0,  # +AAo-)+AAo-y = (\n    1\n)\n",
             b"# coding: utf-7\nx = print(0,  # +AAo-)+AAo-y = (\n    1\n)\n",
         ),
     ],
-    ids=["comma-added", "not-utf8", "tree-changed"],
+    ids=["comma-added", "not-utf8", "comma-removed", "black-directive", "tree-changed"],
 )
 def test_comma_step_writes_only_rewrites_that_keep_the_tree(tmp_path: Path, source: bytes, expected: bytes) -> None:
     """
