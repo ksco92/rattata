@@ -223,7 +223,6 @@ mypy checks the files under `paths` only, so test code is not type-checked unles
 ```toml
 [tool.mypy]
 python_version = "3.13"
-plugins = ["pydantic.mypy"]
 ```
 
 A library without type information gets a stub package in the project's dev dependencies, such as `boto3-stubs` for boto3. A project that sets one of the locked settings in `[tool.mypy]` or in an override, under any name mypy accepts for it (`allow_untyped_defs`, for example), gets exit status 2 before any tool runs. mypy resolves third-party imports from the environment max-lint runs in, and writes its cache to `.mypy_cache` in the current directory. A plugin named by module must be importable from that environment because the working directory is not on the import path; a plugin given as a file path works. The project's `[tool.pytest.ini_options]` is read, so keys such as `pythonpath` work.

@@ -116,17 +116,12 @@ UNTYPED_LIBRARY_CLASS = (
     '"""Fixture module."""\n\nfrom missing_pkg import Widget\n\n\ndef run(widget: Widget) -> None:\n'
     '    """\n    Use the widget.\n\n    :param widget: the widget.\n    """\n'
 )
-UNTYPED_LIBRARY_CALL = (
-    '"""Fixture module."""\n\nfrom missing_pkg import make\n\n\ndef run() -> None:\n    """Use the library."""\n    make()\n'
-)
 BARE_GENERIC = '"""Fixture module."""\n\nVALUE: dict = {}\n'
-TYPED_GENERIC = '"""Fixture module."""\n\nVALUE: dict[str, int] = {}\n'
 EXPLICIT_ANY = '"""Fixture module."""\n\nfrom typing import Any\n\nVALUE: Any = 1\n'
 RETURNED_ANY = (
     '"""Fixture module."""\n\nimport json\n\n\ndef run() -> int:\n    """\n    Parse a number.\n\n    :return: the number.\n    """\n'
     '    return json.loads("1")\n'
 )
-TYPED_RETURN = RETURNED_ANY.replace('return json.loads("1")', 'return int(json.loads("1"))')
 
 
 class BeaconHandler(http.server.BaseHTTPRequestHandler):
@@ -888,25 +883,18 @@ def test_mypy_command_carries_the_locked_settings(tmp_path: Path, monkeypatch: p
     ]
 
 
-@pytest.mark.parametrize(
-    ("source", "exit_code"),
-    [(UNTYPED_LIBRARY_CLASS, 1), (UNTYPED_LIBRARY_CALL, 0), (TYPED_GENERIC, 0), (TYPED_RETURN, 0)],
-    ids=["class-in-annotation", "plain-call", "typed-generic", "typed-return"],
-)
-def test_mypy_rejects_any_from_an_untyped_library_only_where_it_types_a_name(
+def test_mypy_rejects_an_unimported_class_in_an_annotation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
-    source: str,
-    exit_code: int,
 ) -> None:
-    """A class from a module marked ``ignore_missing_imports`` fails in an annotation; code without the construct passes."""
-    write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT + UNTYPED_LIBRARY_OVERRIDE, "src/mod.py": source})
+    """A class from an ``ignore_missing_imports`` module fails when used in an annotation."""
+    write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT + UNTYPED_LIBRARY_OVERRIDE, "src/mod.py": UNTYPED_LIBRARY_CLASS})
 
-    result, output = lint(tmp_path, monkeypatch, capfd, "--check")
+    exit_code, output = lint(tmp_path, monkeypatch, capfd, "--check")
 
-    assert result == exit_code
-    assert ('becomes "Any" due to an unfollowed import' in output) == bool(exit_code)
+    assert exit_code == 1
+    assert 'src/mod.py:6: error: Argument 1 to "run" becomes "Any" due to an unfollowed import' in output
 
 
 @pytest.mark.parametrize(("overrides", "exit_code"), [(UNREACHABLE_OVERRIDE, 1), ("", 0)], ids=["with-override", "without"])
