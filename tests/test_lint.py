@@ -3,6 +3,7 @@
 import http.server
 import os
 import re
+import runpy
 import signal
 import subprocess
 import sys
@@ -105,6 +106,30 @@ class Box:
 '''
 UNTYPED_FUNCTION = '"""Fixture module."""\n\n\ndef run():  # noqa: ANN201\n    """Do nothing."""\n'
 MISTYPED_VALUE = '"""Fixture module."""\n\nVALUE: int = "text"\n'
+LONG = "a" * 120
+BLACK_STABLE = (
+    '"""Fixture module."""\n\n'
+    f'ERROR = ValueError(\n    "{LONG}"\n)\nITEMS = [\n    "{LONG}"\n]\nMAPPING = {{\n    "k": "{LONG}"\n}}\n'
+    f'KEYWORD = dict(\n    key="{LONG}"\n)\nSTAR = max(\n    *["{LONG}"]\n)\nNESTED = list(\n    list(\n        "{LONG}"\n    )\n)\n'
+)
+NESTED_SPEC = '"""Fixture module."""\n\nA = 1\nB = 2\nVALUE = f"{A:{\n    B\n}}"\n'
+TRIPLE_QUOTED_SPEC = '"""Fixture module."""\n\nA = 5\nB = 3\nVALUE = f"""\n{A:{\n  B\n}}\n"""\n'
+TEMPLATE_CALL = '"""Fixture module."""\n\nVALUE = t"{max(\n    1,\n    2\n)}"\n'
+BYTE_ORDER_MARK = b"\xef\xbb\xbfprint(1)\n"
+BARE_CARRIAGE_RETURNS = b'"""Doc."""\r\rX = [1]\r# comment \\\rY = 2\r'
+NOT_UTF8 = b'VALUE = "\xff"\n'
+ORDINARY_LIST = '"""Doc."""\n\nVALUE = [\n    1,\n    2\n]\n'
+FIELDS = {
+    "name": ('NAME = f"{\n    A\n}"\n', 'NAME = f"{A}"\n'),
+    "subscript": ('NAME = f"{\n    [A][\n        0\n    ]\n}"\n', 'NAME = f"{[A][0]}"\n'),
+    "call": ('NAME = f"{\n    max(\n        1,\n        2\n    )\n}"\n', 'NAME = f"{max(1, 2)}"\n'),
+    "container": ('NAME = f"{\n    [\n        1,\n        2\n    ]\n}"\n', 'NAME = f"{[1, 2]}"\n'),
+    "format-spec": ('NAME = f"{A:{\n    B\n}}"\n', 'NAME = f"{A:{B}}"\n'),
+}
+TYPE_PARAMETERS = (
+    '"""Fixture module."""\n\n\ndef generic[\n    T,\n    U\n](first: T, second: U) -> T:\n    """\n    Return the first value.\n\n'
+    '    :param first: the first value.\n    :param second: the second value.\n    :return: the first value.\n    """\n    return first\n'
+)
 MYPY_ERROR = "src/mod.py:4: error: Function is missing a return type annotation  [no-untyped-def]"
 UNREACHABLE_BRANCH = (
     '"""Fixture module."""\n\n\ndef run(value: int) -> None:\n    """\n    Print a string.\n\n    :param value: Printed when it is a string.\n    """\n'
@@ -667,7 +692,16 @@ def test_path_outside_project_is_linted(
 
 @pytest.mark.parametrize(
     "planted",
-    ["black.py", "click.py", "isort/__init__.py", "flake8/__init__.py", "mypy.py", "pathspec/__init__.py"],
+    [
+        "black.py",
+        "click.py",
+        "isort/__init__.py",
+        "flake8/__init__.py",
+        "mypy.py",
+        "pathspec/__init__.py",
+        "add_trailing_comma.py",
+        "tokenize_rt.py",
+    ],
 )
 def test_project_modules_named_like_tools_are_not_imported(
     tmp_path: Path,
@@ -1326,3 +1360,139 @@ def test_mypy_checks_a_file_whose_name_starts_with_at_sign(
 
     assert exit_code == 1
     assert '@x.py:3: error: Incompatible types in assignment (expression has type "str", variable has type "int")' in output
+
+
+def test_write_mode_adds_the_trailing_commas_black_leaves_out(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    """
+    Check mode reports and writes nothing, one write run then leaves nothing to report, and the added commas are all black needs.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    """
+    write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT, "src/mod.py": BLACK_STABLE})
+
+    check = lint(tmp_path, monkeypatch, capfd, "--check")
+    unchanged = (tmp_path / "src/mod.py").read_text() == BLACK_STABLE
+    write = lint(tmp_path, monkeypatch, capfd)
+    after = lint(tmp_path, monkeypatch, capfd, "--check")
+
+    assert (check[0], write[0], after[0]) == (1, 0, 0)
+    assert unchanged
+    assert {code.split(": ")[1] for code in flake8_codes(check[1])} == {"C812", "C815"}
+
+
+def test_second_write_run_settles_multi_line_type_parameters(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    """
+    Black's reflow after the first run exposes a finding that the second run settles.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    """
+    write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT, "src/mod.py": TYPE_PARAMETERS})
+
+    _, first = lint(tmp_path, monkeypatch, capfd)
+    _, second = lint(tmp_path, monkeypatch, capfd)
+
+    assert [code for code in flake8_codes(first) if "C81" in code] == ["src/mod.py:8:24: C812"]
+    assert "C81" not in second
+
+
+@pytest.mark.parametrize("field", FIELDS, ids=list(FIELDS))
+def test_multi_line_fstring_field_keeps_its_finding(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+    field: str,
+) -> None:
+    """
+    A multi-line replacement field is still reported after a write run and a one-line field is not.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    :param field: Key of the replacement field shape in ``FIELDS``.
+    """
+    multi, single = FIELDS[field]
+    header = '"""Fixture module."""\n\nA = 5\nB = 3\n'
+    write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT, "src/multi.py": header + multi, "src/single.py": header + single})
+
+    _, output = lint(tmp_path, monkeypatch, capfd)
+
+    reported = {code.split(":")[0] for code in flake8_codes(output) if "C812" in code}
+    assert reported == {"src/multi.py"}
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        NESTED_SPEC,
+        TRIPLE_QUOTED_SPEC,
+        pytest.param(
+            TEMPLATE_CALL,
+            marks=pytest.mark.skipif(sys.version_info < (3, 14), reason="template strings need Python 3.14"),
+        ),
+    ],
+    ids=["nested-spec", "triple-quoted-spec", "template-call"],
+)
+def test_rewrite_that_changes_the_syntax_tree_is_not_written(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+    source: str,
+) -> None:
+    """
+    A file whose rewrite would not parse, or would mean something else, ends byte-identical and imports as before.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    :param source: Module text the comma step would rewrite.
+    """
+    module = tmp_path / "src/mod.py"
+    write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT, "src/mod.py": source})
+    before = repr(runpy.run_path(str(module))["VALUE"])
+
+    _, output = lint(tmp_path, monkeypatch, capfd)
+
+    assert module.read_text() == source
+    assert repr(runpy.run_path(str(module))["VALUE"]) == before
+    assert "cannot parse" not in output
+
+
+@pytest.mark.parametrize(
+    "content",
+    [BYTE_ORDER_MARK, BARE_CARRIAGE_RETURNS, NOT_UTF8],
+    ids=["byte-order-mark", "bare-cr", "not-utf8"],
+)
+def test_file_the_comma_step_cannot_process_is_left_alone_and_the_run_continues(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+    content: bytes,
+) -> None:
+    """
+    The file is not written, another file still gets its commas and black runs.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    :param content: Bytes of the file the comma step cannot process.
+    """
+    write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT, "src/ordinary.py": ORDINARY_LIST})
+    (tmp_path / "src/bad.py").write_bytes(content)
+
+    _, output = lint(tmp_path, monkeypatch, capfd)
+
+    assert (tmp_path / "src/bad.py").read_bytes() == content
+    assert (tmp_path / "src/ordinary.py").read_text() == ORDINARY_LIST.replace("2\n]", "2,\n]")
+    assert re.search(r"\d files? (left unchanged|failed to reformat)", output)
