@@ -30,7 +30,7 @@ def main(files: list[str]) -> None:
     """
     Write add-trailing-comma's rewrite of each UTF-8 file in ``files`` that only inserts commas and parses to the same tree.
 
-    A file with a black directive, or that cannot be read, decoded, processed or opened for writing, is left; a write error stops.
+    A file with a bare carriage return or black directive, or that fails to read, process or open, is left; a write error stops.
 
     :param files: paths to rewrite.
     """
@@ -39,9 +39,11 @@ def main(files: list[str]) -> None:
 
         try:
             raw = path.read_bytes()
-            lines = raw.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
 
-            if codecs.lookup(tokenize.detect_encoding(io.BytesIO(lines).readline)[0]).name not in ("utf-8", "utf-8-sig"):
+            if b"\r" in raw.replace(b"\r\n", b""):
+                continue
+
+            if codecs.lookup(tokenize.detect_encoding(io.BytesIO(raw).readline)[0]).name not in ("utf-8", "utf-8-sig"):
                 continue
 
             mark = codecs.BOM_UTF8 if raw.startswith(codecs.BOM_UTF8) else b""
@@ -55,11 +57,7 @@ def main(files: list[str]) -> None:
 
             fixed: bytes = mark + _fix_src(text).encode()
 
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                same_tree = ast.dump(ast.parse(fixed)) == ast.dump(ast.parse(raw))
-
-            if not _inserts_only_commas(raw, fixed) or not same_tree:
+            if not _inserts_only_commas(raw, fixed) or ast.dump(ast.parse(fixed)) != ast.dump(ast.parse(raw)):
                 continue
 
             stream = path.open("wb")
@@ -71,4 +69,5 @@ def main(files: list[str]) -> None:
 
 
 if __name__ == "__main__":
+    warnings.simplefilter("ignore")
     main(sys.argv[1:])

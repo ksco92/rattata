@@ -117,10 +117,6 @@ MISSING_COMMAS = (
 NESTED_SPEC = '"""Fixture module."""\n\nA = 1\nB = 2\nVALUE = f"{A:{\n    B\n}}"\n'
 TRIPLE_QUOTED_SPEC = '"""Fixture module."""\n\nA = 5\nB = 3\nVALUE = f"""\n{A:{\n  B\n}}\n"""\n'
 TEMPLATE_CALL = '"""Fixture module."""\n\nVALUE = t"{max(\n    1,\n    2\n)}"\n'
-UTF7_SUBSCRIPT = (
-    '# coding: utf-7\n"""Fixture module."""\n\n'
-    f'D = {{\n    "{LONG}": 1,\n}}\nX = [\n    0,  # note+AAo-]+AAo-VALUE = D+AFs-\n    "{LONG}"\n]\n'
-)
 LONG_ITEMS = f'ITEMS = [\n    "{LONG}"\n]\n'
 DOC_ITEMS = f'"""Doc."""\n\n{LONG_ITEMS}'
 WITH_COMMA = DOC_ITEMS.replace('"\n]', '",\n]')
@@ -1492,20 +1488,10 @@ def test_file_with_a_byte_order_mark_gets_its_commas_and_keeps_the_mark(
     assert module.read_bytes() == codecs.BOM_UTF8 + f"x = [1]\n{LONG_ITEMS}".replace('"\n]', '",\n]').encode()
 
 
-@pytest.mark.parametrize(
-    ("content", "mode", "row"),
-    [
-        pytest.param(DOC_ITEMS.encode(), 0o444, 4, id="read-only"),
-        pytest.param(DOC_ITEMS.replace("\n", "\r").encode(), 0o644, 4, id="bare-cr"),
-    ],
-)
-def test_file_the_comma_step_cannot_rewrite_keeps_its_finding_and_the_run_continues(
+def test_read_only_file_keeps_its_finding_and_the_run_continues(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
-    content: bytes,
-    mode: int,
-    row: int,
 ) -> None:
     """
     The file is left as it was and flake8 reports its missing comma, while another file gains its comma.
@@ -1513,20 +1499,16 @@ def test_file_the_comma_step_cannot_rewrite_keeps_its_finding_and_the_run_contin
     :param tmp_path: Project directory the fixture files are written to.
     :param monkeypatch: Used to run max-lint from the project directory.
     :param capfd: Captures the output of the tools the run starts.
-    :param content: Bytes of the file the comma step cannot rewrite.
-    :param mode: Permission bits of that file.
-    :param row: Row of the missing comma as flake8 reports it.
     """
     stuck = tmp_path / "src/stuck.py"
-    write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT, "src/ordinary.py": DOC_ITEMS})
-    stuck.write_bytes(content)
-    stuck.chmod(mode)
+    write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT, "src/ordinary.py": DOC_ITEMS, "src/stuck.py": DOC_ITEMS})
+    stuck.chmod(0o444)
 
     _, output = lint(tmp_path, monkeypatch, capfd)
 
-    assert stuck.read_bytes() == content
+    assert stuck.read_text() == DOC_ITEMS
     assert (tmp_path / "src/ordinary.py").read_text() == WITH_COMMA
-    assert [code for code in flake8_codes(output) if "C81" in code] == [f"src/stuck.py:{row}:127: C812"]
+    assert [code for code in flake8_codes(output) if "C81" in code] == ["src/stuck.py:4:127: C812"]
 
 
 def test_file_that_is_not_utf8_and_has_no_coding_line_stops_the_run_at_black(
@@ -1591,13 +1573,13 @@ def test_file_that_gains_no_comma_is_not_written(
     "content",
     [
         b'"""Doc."""\n\n# fmt: off\nMATRIX = [1, 0,\n          0, 1]\n# fmt: on\n',
-        UTF7_SUBSCRIPT.encode(),
-        b'# coding: iso2022_jp\n"""Doc."""\n\n# fmt\x1b(B: off\nMATRIX = [1, 0,\n          0, 1]\n# fmt: on\n',
         f'# coding: latin-1\n"""Doc \xe9."""\n\n{LONG_ITEMS}'.encode(),
+        b"# a\rB = 1  # coding: iso2022_jp\nV = [1,\n    2]  # fmt\x1b(B: skip\n",
+        b'"""Doc."""\n\nX = 1\r# fmt: off\nV = [1,\n    2]\n',
     ],
-    ids=["fmt-off", "utf-7", "iso2022-jp-fmt-off", "latin-1-valid-utf-8"],
+    ids=["fmt-off", "latin-1-valid-utf-8", "bare-cr-iso2022-jp-fmt-skip", "bare-cr-fmt-off"],
 )
-def test_file_that_opts_out_of_black_or_is_not_read_as_utf8_is_left_alone(
+def test_file_that_opts_out_of_black_or_is_not_read_alike_by_every_reader_is_left_alone(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
@@ -1609,7 +1591,7 @@ def test_file_that_opts_out_of_black_or_is_not_read_as_utf8_is_left_alone(
     :param tmp_path: Project directory the fixture files are written to.
     :param monkeypatch: Used to run max-lint from the project directory.
     :param capfd: Captures the output of the tools the run starts.
-    :param content: Bytes of a module with a black directive or another declared encoding.
+    :param content: Bytes of a module with a black directive, another declared encoding or a bare carriage return.
     """
     module = tmp_path / "src/mod.py"
     write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT, "src/ordinary.py": DOC_ITEMS})

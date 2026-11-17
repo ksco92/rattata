@@ -16,13 +16,14 @@ if sys.platform != "win32":
 @pytest.mark.parametrize(
     ("source", "expected"),
     [
-        (b"x = [\n    1,\n    2\n]\n", b"x = [\n    1,\n    2,\n]\n"),
+        (b"# coding: utf8\nx = [\n    1,\n    2\n]\n", b"# coding: utf8\nx = [\n    1,\n    2,\n]\n"),
         (b"\xff\n", b"\xff\n"),
-        (b"\r# coding: latin-1\nx = [\n    1,\n    2\n]\n", b"\r# coding: latin-1\nx = [\n    1,\n    2\n]\n"),
+        (b"x = [\r    1,\r    2\r]\r", b"x = [\r    1,\r    2\r]\r"),
+        (b"# coding: latin-1\nx = [\n    1,\n    2\n]\n", b"# coding: latin-1\nx = [\n    1,\n    2\n]\n"),
         (b"with (open(name) as handle,):\n    pass\n", b"with (open(name) as handle,):\n    pass\n"),
         (b"x = [  # fmt:skip\n    1\n]\n", b"x = [  # fmt:skip\n    1\n]\n"),
     ],
-    ids=["comma-added", "not-utf8", "declared-after-a-carriage-return", "comma-removed", "black-directive"],
+    ids=["utf8-alias", "not-utf8", "bare-cr", "declared-latin-1", "comma-removed", "black-directive"],
 )
 def test_comma_step_writes_only_rewrites_that_insert_commas(tmp_path: Path, source: bytes, expected: bytes) -> None:
     """
