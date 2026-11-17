@@ -216,7 +216,7 @@ The tools are add-trailing-comma, black, isort, flake8, mypy, pytest, pytest-cov
 - flake8 selects `ANN401` in addition to its defaults and ignores `E203` and `E501`. pydoclint checks Sphinx-style docstrings without argument types in the docstring and skips private functions and return types.
 - Docstrings are parsed with the `raw` and `include` directives disabled, so flake8 reports each use as `RST299`.
 - mypy always runs with `disallow_untyped_defs`, `warn_redundant_casts`, `no_implicit_optional`, `disallow_any_unimported`, `disallow_any_generics`, `disallow_any_explicit` and `warn_return_any`.
-- Coverage is branch coverage with a floor of 95% compared to two decimals, the missing lines shown, and `pragma: no cover` and `if __name__ == .__main__.:` as the excluded lines.
+- Coverage is branch coverage with a floor of 95% compared to two decimals, the missing lines shown, and `pragma: no cover`, `if __name__ == .__main__.:` and `if (typing\.)?TYPE_CHECKING:` as the excluded lines.
 - pytest runs with `--import-mode=importlib`, and the current directory is importable, so a project that is not an installed package can import its own modules in its tests.
 
 Settings for these tools in the project (`[tool.black]`, `[tool.isort]`, `.flake8`, `setup.cfg`, `tox.ini`, `.isort.cfg`, `[tool.coverage.*]`, `.coveragerc` and `.coveragerc.toml`) have no effect.
