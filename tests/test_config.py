@@ -138,6 +138,17 @@ def test_load_config_rejects_invalid_settings(tmp_path: Path, text: str, message
         "no_warn_redundant_casts",
         "no_implicit_optional",
         "implicit_optional",
+        "disallow_any_unimported",
+        "allow_any_unimported",
+        "no_disallow_any_unimported",
+        "disallow_any_generics",
+        "allow_any_generics",
+        "no_disallow_any_generics",
+        "disallow_any_explicit",
+        "allow_any_explicit",
+        "no_disallow_any_explicit",
+        "warn_return_any",
+        "no_warn_return_any",
     ],
 )
 @pytest.mark.parametrize(

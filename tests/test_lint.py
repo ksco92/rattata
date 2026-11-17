@@ -106,8 +106,27 @@ class Box:
 UNTYPED_FUNCTION = '"""Fixture module."""\n\n\ndef run():  # noqa: ANN201\n    """Do nothing."""\n'
 MISTYPED_VALUE = '"""Fixture module."""\n\nVALUE: int = "text"\n'
 MYPY_ERROR = "src/mod.py:4: error: Function is missing a return type annotation  [no-untyped-def]"
-MISSING_IMPORT = '"""Fixture module."""\n\nimport missing_pkg\n\nVALUE = missing_pkg.VALUE\n'
-MISSING_IMPORT_OVERRIDE = '\n[[tool.mypy.overrides]]\nmodule = ["missing_pkg.*"]\nignore_missing_imports = true\n'
+UNREACHABLE_BRANCH = (
+    '"""Fixture module."""\n\n\ndef run(value: int) -> None:\n    """\n    Print a string.\n\n    :param value: the value.\n    """\n'
+    "    if isinstance(value, str):\n        print(value)\n"
+)
+UNREACHABLE_OVERRIDE = '\n[[tool.mypy.overrides]]\nmodule = ["mod"]\nwarn_unreachable = true\n'
+UNTYPED_LIBRARY_OVERRIDE = '\n[[tool.mypy.overrides]]\nmodule = ["missing_pkg"]\nignore_missing_imports = true\n'
+UNTYPED_LIBRARY_CLASS = (
+    '"""Fixture module."""\n\nfrom missing_pkg import Widget\n\n\ndef run(widget: Widget) -> None:\n'
+    '    """\n    Use the widget.\n\n    :param widget: the widget.\n    """\n'
+)
+UNTYPED_LIBRARY_CALL = (
+    '"""Fixture module."""\n\nfrom missing_pkg import make\n\n\ndef run() -> None:\n    """Use the library."""\n    make()\n'
+)
+BARE_GENERIC = '"""Fixture module."""\n\nVALUE: dict = {}\n'
+TYPED_GENERIC = '"""Fixture module."""\n\nVALUE: dict[str, int] = {}\n'
+EXPLICIT_ANY = '"""Fixture module."""\n\nfrom typing import Any\n\nVALUE: Any = 1\n'
+RETURNED_ANY = (
+    '"""Fixture module."""\n\nimport json\n\n\ndef run() -> int:\n    """\n    Parse a number.\n\n    :return: the number.\n    """\n'
+    '    return json.loads("1")\n'
+)
+TYPED_RETURN = RETURNED_ANY.replace('return json.loads("1")', 'return int(json.loads("1"))')
 
 
 class BeaconHandler(http.server.BaseHTTPRequestHandler):
@@ -820,8 +839,11 @@ def test_mypy_does_not_run_after_a_flake8_failure(
             '"""Fixture module."""\n\n\ndef run(value: int = None) -> None:\n    """\n    Do nothing.\n\n    :param value: unused.\n    """\n',
             'src/mod.py:4: error: Incompatible default for parameter "value"',
         ),
+        (BARE_GENERIC, 'src/mod.py:3: error: Missing type arguments for generic type "dict"'),
+        (EXPLICIT_ANY, 'src/mod.py:5: error: Explicit "Any" is not allowed'),
+        (RETURNED_ANY, 'src/mod.py:12: error: Returning Any from function declared to return "int"'),
     ],
-    ids=["redundant-cast", "implicit-optional"],
+    ids=["redundant-cast", "implicit-optional", "bare-generic", "explicit-any", "returned-any"],
 )
 def test_mypy_locked_settings_apply_without_project_settings(
     tmp_path: Path,
@@ -857,26 +879,51 @@ def test_mypy_command_carries_the_locked_settings(tmp_path: Path, monkeypatch: p
         "--disallow-untyped-defs",
         "--warn-redundant-casts",
         "--no-implicit-optional",
+        "--disallow-any-unimported",
+        "--disallow-any-generics",
+        "--disallow-any-explicit",
+        "--warn-return-any",
         "--",
         "./src/mod.py",
     ]
 
 
-@pytest.mark.parametrize(("overrides", "exit_code"), [(MISSING_IMPORT_OVERRIDE, 0), ("", 1)], ids=["with-override", "without"])
-def test_mypy_reads_project_import_overrides(
+@pytest.mark.parametrize(
+    ("source", "exit_code"),
+    [(UNTYPED_LIBRARY_CLASS, 1), (UNTYPED_LIBRARY_CALL, 0), (TYPED_GENERIC, 0), (TYPED_RETURN, 0)],
+    ids=["class-in-annotation", "plain-call", "typed-generic", "typed-return"],
+)
+def test_mypy_rejects_any_from_an_untyped_library_only_where_it_types_a_name(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+    source: str,
+    exit_code: int,
+) -> None:
+    """A class from a module marked ``ignore_missing_imports`` fails in an annotation; code without the construct passes."""
+    write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT + UNTYPED_LIBRARY_OVERRIDE, "src/mod.py": source})
+
+    result, output = lint(tmp_path, monkeypatch, capfd, "--check")
+
+    assert result == exit_code
+    assert ("becomes \"Any\" due to an unfollowed import" in output) == bool(exit_code)
+
+
+@pytest.mark.parametrize(("overrides", "exit_code"), [(UNREACHABLE_OVERRIDE, 1), ("", 0)], ids=["with-override", "without"])
+def test_mypy_reads_project_overrides(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
     overrides: str,
     exit_code: int,
 ) -> None:
-    """An ``ignore_missing_imports`` override in ``[[tool.mypy.overrides]]`` decides whether an unresolved import fails."""
-    write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT + overrides, "src/mod.py": MISSING_IMPORT})
+    """A ``warn_unreachable`` override in ``[[tool.mypy.overrides]]`` decides whether an unreachable branch fails."""
+    write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT + overrides, "src/mod.py": UNREACHABLE_BRANCH})
 
     result, output = lint(tmp_path, monkeypatch, capfd, "--check")
 
     assert result == exit_code
-    assert ("Cannot find implementation or library stub" in output) == bool(exit_code)
+    assert ("Statement is unreachable" in output) == bool(exit_code)
 
 
 def test_mypy_ignores_other_mypy_config_files(

@@ -18,6 +18,17 @@ LOCKED_MYPY_KEYS = (
     "no_warn_redundant_casts",
     "no_implicit_optional",
     "implicit_optional",
+    "disallow_any_unimported",
+    "allow_any_unimported",
+    "no_disallow_any_unimported",
+    "disallow_any_generics",
+    "allow_any_generics",
+    "no_disallow_any_generics",
+    "disallow_any_explicit",
+    "allow_any_explicit",
+    "no_disallow_any_explicit",
+    "warn_return_any",
+    "no_warn_return_any",
 )
 
 
