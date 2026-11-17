@@ -1,4 +1,4 @@
-"""Tests for the comma step against the real add-trailing-comma, run in process so its branches are measured."""
+"""Tests for the comma step."""
 
 import os
 import subprocess
@@ -18,12 +18,13 @@ if sys.platform != "win32":
     [
         (b"# coding: utf8\nx = [\n    1,\n    2\n]\n", b"# coding: utf8\nx = [\n    1,\n    2,\n]\n"),
         (b"\xff\n", b"\xff\n"),
+        (b"x = [\r\n    1,\r\n    2\r\n]\r\n", b"x = [\r\n    1,\r\n    2,\r\n]\r\n"),
         (b"x = [\r    1,\r    2\r]\r", b"x = [\r    1,\r    2\r]\r"),
         (b"# coding: latin-1\nx = [\n    1,\n    2\n]\n", b"# coding: latin-1\nx = [\n    1,\n    2\n]\n"),
         (b"with (open(name) as handle,):\n    pass\n", b"with (open(name) as handle,):\n    pass\n"),
         (b"x = [  # fmt:skip\n    1\n]\n", b"x = [  # fmt:skip\n    1\n]\n"),
     ],
-    ids=["utf8-alias", "not-utf8", "bare-cr", "declared-latin-1", "comma-removed", "black-directive"],
+    ids=["utf8-alias", "not-utf8", "crlf", "bare-cr", "declared-latin-1", "comma-removed", "black-directive"],
 )
 def test_comma_step_writes_only_rewrites_that_insert_commas(tmp_path: Path, source: bytes, expected: bytes) -> None:
     """
