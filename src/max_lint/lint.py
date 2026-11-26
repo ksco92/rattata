@@ -21,18 +21,6 @@ FLAKE8_SEPARATORS = re.compile(r"[\s:,]")
 TOOL_ENVIRONMENT = {"DOCUTILSCONFIG": str(STYLE / "docutils.conf"), "PYTHONSAFEPATH": "1"}
 
 
-def _identity(path: str | Path) -> tuple[int, int]:
-    """
-    Return the device and inode of the file or directory ``path`` resolves to.
-
-    :param path: Filesystem path to stat.
-    :return: ``(st_dev, st_ino)`` pair.
-    """
-    status = os.stat(path)
-
-    return status.st_dev, status.st_ino
-
-
 def python_files(config: Config) -> list[str]:
     """
     List the Python files under ``paths`` and ``test-paths``, minus the excluded ones.
@@ -52,8 +40,10 @@ def python_files(config: Config) -> list[str]:
 
     for path in found:
         with contextlib.suppress(OSError):
-            if stat.S_ISREG(os.stat(path).st_mode):
-                spellings.setdefault(_identity(path), os.path.relpath(path))
+            status = os.stat(path)
+
+            if stat.S_ISREG(status.st_mode):
+                spellings.setdefault((status.st_dev, status.st_ino), os.path.relpath(path))
 
     result = sorted(spellings.values())
 

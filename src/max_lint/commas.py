@@ -16,8 +16,8 @@ def _inserts_only_commas(raw: bytes, fixed: bytes) -> bool:
     """
     Return whether ``fixed``, with whitespace removed, is ``raw`` with one or more commas inserted and nothing else changed.
 
-    :param raw: Original file bytes.
-    :param fixed: Rewritten file bytes.
+    :param raw: original file bytes.
+    :param fixed: rewritten file bytes.
     :return: True when only commas were inserted.
     """
     old, new = b"".join(raw.split()), b"".join(fixed.split())

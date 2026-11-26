@@ -4,7 +4,9 @@ import ast
 import re
 import tokenize
 from collections.abc import Iterator
+from importlib.metadata import version as package_version
 from pathlib import Path
+from typing import Self
 
 DEPRECATED_TYPING_NAMES = frozenset(
     {
@@ -38,14 +40,31 @@ MAX_MODULE_DOCSTRING_LINES = 10
 MAX_NESTING_DEPTH = 4
 MAX_COMMENT_RATIO = 0.40
 MIN_LINES_FOR_RATIO = 20
-CRUMB_COMMENT = re.compile(r"^#\s*(?:TODO|FIXME|XXX|HACK)(?:[:\s]|$)", re.IGNORECASE)
+CRUMB_COMMENT = re.compile(r"^#[ \t]*(?:TODO|FIXME|XXX|HACK)(?:[:(\s]|$)", re.IGNORECASE)
 DOCUMENTED_ABSENCE = re.compile(
-    r"(?:#\s*Panics:\s*never\b|^\s*:raises(?:\s+\w+)?:\s*(?:none|nothing|never)\.?$)",
+    r"(?:#[ \t]*Panics:[ \t]*never\b|^[ \t]*:raises(?:[ \t]+\w+)?:[ \t]*(?:none|nothing|never)\.?$)",
     re.IGNORECASE | re.MULTILINE,
 )
-SPHINX_FIELD = re.compile(r"^\s*:(?:param|type|return|returns|rtype|yield|yields|ytype|raises|raise|ivar|cvar|var)\b")
+SPHINX_FIELD = re.compile(r"^[ \t]*:(?:param|type|return|returns|rtype|yield|yields|ytype|raises|raise|ivar|cvar|var)\b")
+DOCSTRING_DELIMITER = re.compile(r'^[rRuUfFbB]{0,2}(?:"""|\'\'\')$')
 SILENT_EXCEPT_NAMES = frozenset({"Exception", "BaseException"})
 NESTING_NODES = (ast.If, ast.For, ast.AsyncFor, ast.While, ast.With, ast.AsyncWith, ast.Try, ast.TryStar, ast.Match)
+PATCH_DECORATORS = frozenset(
+    {
+        "patch",
+        "patch.object",
+        "patch.dict",
+        "patch.multiple",
+        "mock.patch",
+        "mock.patch.object",
+        "mock.patch.dict",
+        "mock.patch.multiple",
+        "unittest.mock.patch",
+        "unittest.mock.patch.object",
+        "unittest.mock.patch.dict",
+        "unittest.mock.patch.multiple",
+    },
+)
 
 ErrorTuple = tuple[int, int, str, type["MaxLintPlugin"]]
 
@@ -54,7 +73,7 @@ def _is_test_file(filename: str) -> bool:
     """
     Return whether ``filename`` is a pytest test file.
 
-    :param filename: Path of the Python file being checked.
+    :param filename: path of the Python file being checked.
     :return: True when the file is a test module or lives under a test directory.
     """
     path = Path(filename)
@@ -66,12 +85,25 @@ def _is_test_file(filename: str) -> bool:
     return any(part in {"tests", "test"} for part in path.parts[:-1])
 
 
+def _is_banned_unittest_module(module: str) -> bool:
+    """
+    Return whether ``module`` is ``unittest`` or a non-``mock`` submodule of ``unittest``.
+
+    :param module: dotted module name from an import statement.
+    :return: True when the module is banned in pytest suites.
+    """
+    if module == "unittest":
+        return True
+
+    return module.startswith("unittest.") and module != "unittest.mock" and not module.startswith("unittest.mock.")
+
+
 def _docstring_node(node: ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef) -> ast.Constant | None:
     """
     Return the docstring ``ast.Constant`` of ``node``, or ``None`` when absent.
 
     :param node: AST node that may begin with a string literal docstring.
-    :return: Leading docstring constant node, or None when absent.
+    :return: leading docstring constant node, or None when absent.
     """
     if not node.body:
         return None
@@ -88,7 +120,7 @@ def _is_silent_pass_body(body: list[ast.stmt]) -> bool:
     """
     Return whether ``body`` consists solely of ``pass`` or ``...`` statements.
 
-    :param body: Statement list from an ``except`` handler.
+    :param body: statement list from an ``except`` handler.
     :return: True when every statement is ``pass`` or an ellipsis literal.
     """
     for stmt in body:
@@ -103,70 +135,78 @@ def _is_silent_pass_body(body: list[ast.stmt]) -> bool:
     return bool(body)
 
 
-def _is_broad_except(handler: ast.ExceptHandler) -> bool:
-    """
-    Return whether ``handler`` catches bare ``except``, ``Exception`` or ``BaseException``.
-
-    :param handler: Exception handler AST node.
-    :return: True when the handler catches all exceptions broadly.
-    """
-    if handler.type is None:
-        return True
-
-    return isinstance(handler.type, ast.Name) and handler.type.id in SILENT_EXCEPT_NAMES
-
-
 def _is_patch_decorator(decorator: ast.expr) -> bool:
     """
-    Return whether ``decorator`` is a ``@patch`` or ``@mock.patch`` call or reference.
+    Return whether ``decorator`` is a ``unittest.mock.patch`` decorator call or reference.
 
-    :param decorator: Function decorator expression AST node.
-    :return: True when the decorator invokes ``patch`` or ``patch.*``.
+    :param decorator: function decorator expression AST node.
+    :return: True when the decorator references ``patch``, ``mock.patch`` or ``unittest.mock.patch`` and their helpers.
     """
-    target = decorator.func if isinstance(decorator, ast.Call) else decorator
+    parts: list[str] = []
+    current: ast.expr = decorator.func if isinstance(decorator, ast.Call) else decorator
 
-    if isinstance(target, ast.Name):
-        return target.id == "patch"
+    while isinstance(current, ast.Attribute):
+        parts.append(current.attr)
+        current = current.value
 
-    if isinstance(target, ast.Attribute):
-        if target.attr == "patch":
-            return True
+    if not isinstance(current, ast.Name):
+        return False
 
-        return isinstance(target.value, ast.Attribute) and target.value.attr == "patch"
+    parts.append(current.id)
+    parts.reverse()
 
-    return False
+    return ".".join(parts) in PATCH_DECORATORS
 
 
-def _max_nesting_violations(node: ast.AST, depth: int) -> Iterator[tuple[int, int]]:
+def _max_nesting_violations(root: ast.AST) -> Iterator[tuple[int, int]]:
     """
-    Yield ``(line, col)`` for each block in ``node`` whose nesting exceeds ``MAX_NESTING_DEPTH``.
+    Yield ``(line, col)`` for each block in ``root`` whose nesting exceeds ``MAX_NESTING_DEPTH``, flattening ``elif`` chains.
 
-    :param node: Current AST node being traversed.
-    :param depth: Current control-flow nesting depth inside the enclosing function.
+    :param root: function AST node whose body is inspected.
     :yields: ``(line, col)`` location of each control-flow node past the depth limit.
     """
-    for child in ast.iter_child_nodes(node):
-        if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            continue
+    stack: list[tuple[ast.AST, int]] = [(root, 0)]
 
-        if isinstance(child, NESTING_NODES):
-            next_depth = depth + 1
+    while stack:
+        current, depth = stack.pop()
+        elif_child: ast.If | None = None
 
-            if next_depth > MAX_NESTING_DEPTH:
-                yield child.lineno, child.col_offset
+        if (
+            isinstance(current, ast.If)
+            and len(current.orelse) == 1
+            and isinstance(current.orelse[0], ast.If)
+            and current.orelse[0].col_offset == current.col_offset
+        ):
+            elif_child = current.orelse[0]
+
+        pending: list[tuple[ast.AST, int]] = []
+
+        for child in ast.iter_child_nodes(current):
+            if isinstance(child, (ast.expr, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                continue
+
+            if child is elif_child:
+                pending.append((child, depth))
+            elif isinstance(child, NESTING_NODES):
+                next_depth = depth + 1
+
+                if next_depth > MAX_NESTING_DEPTH:
+                    yield child.lineno, child.col_offset
+                else:
+                    pending.append((child, next_depth))
             else:
-                yield from _max_nesting_violations(child, next_depth)
-        else:
-            yield from _max_nesting_violations(child, depth)
+                pending.append((child, depth))
+
+        stack.extend(reversed(pending))
 
 
 def _docstring_prose_lines(tree: ast.Module, lines: list[str]) -> set[int]:
     """
-    Return 1-based line numbers of docstring prose, excluding Sphinx field and doctest lines.
+    Return 1-based line numbers of docstring prose, excluding delimiters, Sphinx fields and doctests.
 
-    :param tree: Parsed module AST.
-    :param lines: Physical source lines of the module.
-    :return: Set of 1-based line numbers containing docstring prose.
+    :param tree: parsed module AST.
+    :param lines: physical source lines of the module.
+    :return: set of 1-based line numbers containing docstring prose.
     """
     prose: set[int] = set()
 
@@ -180,6 +220,8 @@ def _docstring_prose_lines(tree: ast.Module, lines: list[str]) -> set[int]:
             continue
 
         in_doctest = False
+        in_sphinx_field = False
+        field_indent = 0
 
         for line_no in range(doc.lineno, min(doc.end_lineno, len(lines)) + 1):
             raw = lines[line_no - 1]
@@ -187,18 +229,31 @@ def _docstring_prose_lines(tree: ast.Module, lines: list[str]) -> set[int]:
 
             if not stripped:
                 in_doctest = False
+                in_sphinx_field = False
+                continue
+
+            if DOCSTRING_DELIMITER.match(stripped):
+                in_doctest = False
+                in_sphinx_field = False
                 continue
 
             if stripped.startswith(">>>"):
                 in_doctest = True
+                in_sphinx_field = False
                 continue
 
             if in_doctest:
                 continue
 
             if SPHINX_FIELD.match(raw):
+                in_sphinx_field = True
+                field_indent = len(raw) - len(raw.lstrip())
                 continue
 
+            if in_sphinx_field and (len(raw) - len(raw.lstrip())) > field_indent:
+                continue
+
+            in_sphinx_field = False
             prose.add(line_no)
 
     return prose
@@ -206,12 +261,12 @@ def _docstring_prose_lines(tree: ast.Module, lines: list[str]) -> set[int]:
 
 def _check_comment_ratio(tree: ast.Module, lines: list[str], tokens: list[tokenize.TokenInfo]) -> Iterator[tuple[int, int, str]]:
     """
-    Yield ``MXL005`` when prose comments and docstrings exceed 40% of non-blank lines.
+    Yield ``MXL005`` when prose comments and docstrings exceed ``MAX_COMMENT_RATIO`` of non-blank lines.
 
-    :param tree: Parsed module AST.
-    :param lines: Physical source lines of the module.
-    :param tokens: Token stream of the module.
-    :yields: ``(line, col, message)`` violation tuple when the prose ratio exceeds 40%.
+    :param tree: parsed module AST.
+    :param lines: physical source lines of the module.
+    :param tokens: token stream of the module.
+    :yields: ``(line, col, message)`` violation tuple when the prose ratio exceeds ``MAX_COMMENT_RATIO``.
     """
     non_blank = {index for index, line in enumerate(lines, start=1) if line.strip()}
 
@@ -244,8 +299,11 @@ def _check_comment_ratio(tree: ast.Module, lines: list[str], tokens: list[tokeni
     ratio = len(prose_lines) / len(non_blank)
 
     if ratio > MAX_COMMENT_RATIO:
-        percent = int(round(ratio * 100))
-        yield 1, 0, f"MXL005 comment and docstring prose is {percent}% of non-blank lines (max 40%)"
+        yield (
+            1,
+            0,
+            f"MXL005 comment and docstring prose is {round(ratio * 100)}% of non-blank lines (max {MAX_COMMENT_RATIO:.0%})",
+        )
 
 
 def _check_tokens(
@@ -255,8 +313,8 @@ def _check_tokens(
     """
     Yield token-level violations (``MXL008`` documented absence, ``MXL009`` crumb comments).
 
-    :param tokens: Token stream of the module.
-    :param is_test: Whether the file is classified as a test module.
+    :param tokens: token stream of the module.
+    :param is_test: whether the file is classified as a test module.
     :yields: ``(line, col, message)`` violation tuples from comments.
     """
     for token in tokens:
@@ -274,13 +332,13 @@ def _check_imports(node: ast.Import | ast.ImportFrom, is_test: bool) -> Iterator
     """
     Yield import violations (``MXL001``, ``MXL010``, ``MXL012``).
 
-    :param node: Import or from-import AST node.
-    :param is_test: Whether the file is classified as a test module.
+    :param node: import or from-import AST node.
+    :param is_test: whether the file is classified as a test module.
     :yields: ``(line, col, message)`` violation tuples for banned imports.
     """
     if isinstance(node, ast.Import):
         for alias in node.names:
-            if is_test and alias.name == "unittest":
+            if is_test and _is_banned_unittest_module(alias.name):
                 yield node.lineno, node.col_offset, "MXL010 use pytest instead of unittest in tests"
 
             if is_test and alias.name.split(".")[-1].startswith("test_"):
@@ -290,7 +348,7 @@ def _check_imports(node: ast.Import | ast.ImportFrom, is_test: bool) -> Iterator
 
     module = node.module or ""
 
-    if module == "typing":
+    if node.level == 0 and module == "typing":
         for alias in node.names:
             if alias.name in DEPRECATED_TYPING_NAMES:
                 yield (
@@ -299,24 +357,31 @@ def _check_imports(node: ast.Import | ast.ImportFrom, is_test: bool) -> Iterator
                     f"MXL001 deprecated typing.{alias.name}; use builtin generics, '|' or collections.abc",
                 )
 
-    if is_test and module == "unittest":
+    if is_test and node.level == 0 and module == "unittest":
         for alias in node.names:
             if alias.name != "mock":
                 yield node.lineno, node.col_offset, "MXL010 use pytest instead of unittest in tests"
 
+    if is_test and node.level == 0 and module != "unittest" and _is_banned_unittest_module(module):
+        yield node.lineno, node.col_offset, "MXL010 use pytest instead of unittest in tests"
+
     if is_test and module and module.split(".")[-1].startswith("test_"):
         yield node.lineno, node.col_offset, f"MXL012 do not import sibling test module {module!r}"
+    elif is_test and ((node.level > 0 and not module) or module.split(".")[-1] in {"tests", "test"}):
+        for alias in node.names:
+            if alias.name.startswith("test_"):
+                yield node.lineno, node.col_offset, f"MXL012 do not import sibling test module {alias.name!r}"
 
 
 def _check_function(node: ast.FunctionDef | ast.AsyncFunctionDef, is_test: bool) -> Iterator[tuple[int, int, str]]:
     """
     Yield function-level violations (``MXL007`` nesting, ``MXL011`` patch decorator).
 
-    :param node: Function or async function definition AST node.
-    :param is_test: Whether the file is classified as a test module.
+    :param node: function or async function definition AST node.
+    :param is_test: whether the file is classified as a test module.
     :yields: ``(line, col, message)`` violation tuples for the function.
     """
-    for line, col in _max_nesting_violations(node, 0):
+    for line, col in _max_nesting_violations(node):
         yield line, col, f"MXL007 block nesting exceeds {MAX_NESTING_DEPTH} levels"
 
     if is_test:
@@ -334,7 +399,7 @@ def _check_node(node: ast.AST, is_test: bool) -> Iterator[tuple[int, int, str]]:
     Yield AST violations for a single syntax node.
 
     :param node: AST node visited during module traversal.
-    :param is_test: Whether the file is classified as a test module.
+    :param is_test: whether the file is classified as a test module.
     :yields: ``(line, col, message)`` violation tuples for ``node``.
     """
     if isinstance(node, (ast.Import, ast.ImportFrom)):
@@ -344,13 +409,25 @@ def _check_node(node: ast.AST, is_test: bool) -> Iterator[tuple[int, int, str]]:
         if isinstance(node.type, ast.Tuple):
             yield node.lineno, node.col_offset, "MXL003 use separate single-exception except clauses"
 
-        if _is_broad_except(node) and _is_silent_pass_body(node.body):
+        is_broad = node.type is None or (isinstance(node.type, ast.Name) and node.type.id in SILENT_EXCEPT_NAMES)
+
+        if is_broad and _is_silent_pass_body(node.body):
             yield node.lineno, node.col_offset, "MXL004 do not silently swallow exceptions with pass"
 
-    if isinstance(node, ast.Raise) and isinstance(node.exc, ast.Call):
-        func = node.exc.func
+    if isinstance(node, ast.Raise):
+        exc = node.exc
 
-        if isinstance(func, ast.Name) and func.id == "NotImplementedError" and not node.exc.args and not node.exc.keywords:
+        is_bare_call = (
+            isinstance(exc, ast.Call)
+            and isinstance(exc.func, ast.Name)
+            and exc.func.id == "NotImplementedError"
+            and not exc.args
+            and not exc.keywords
+        )
+
+        is_bare_name = isinstance(exc, ast.Name) and exc.id == "NotImplementedError"
+
+        if is_bare_call or is_bare_name:
             yield node.lineno, node.col_offset, "MXL006 raise NotImplementedError with an explanatory message"
 
     if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -370,10 +447,10 @@ class MaxLintPlugin:
     """Flake8 AST and token checker for deterministic max-lint rules (``MXL001``–``MXL012``)."""
 
     name = "max-lint-rules"
-    version = "0.11.0"
+    version = package_version("max-lint")
 
     def __init__(
-        self: "MaxLintPlugin",
+        self: Self,
         tree: ast.Module,
         filename: str = "",
         lines: list[str] | None = None,
@@ -392,7 +469,7 @@ class MaxLintPlugin:
         self.lines = lines or []
         self.file_tokens = file_tokens or []
 
-    def run(self: "MaxLintPlugin") -> list[ErrorTuple]:
+    def run(self: Self) -> list[ErrorTuple]:
         """
         Run every ``MXL`` rule on the module and return flake8 violation tuples.
 
