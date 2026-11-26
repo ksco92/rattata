@@ -50,7 +50,12 @@ class Config:
 
 
 def _is_str_list(value: object) -> bool:
-    """Return whether ``value`` is a list of non-empty strings."""
+    """
+    Return whether ``value`` is a list of non-empty strings.
+
+    :param value: Candidate value from ``pyproject.toml``.
+    :return: True when every element is a non-empty string.
+    """
     return isinstance(value, list) and all(isinstance(item, str) and item for item in value)
 
 

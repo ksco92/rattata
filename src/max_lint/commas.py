@@ -13,7 +13,13 @@ from black.comments import FMT_OFF, FMT_SKIP, contains_fmt_directive
 
 
 def _inserts_only_commas(raw: bytes, fixed: bytes) -> bool:
-    """Whether ``fixed``, with whitespace removed, is ``raw`` with one or more commas inserted and nothing else changed."""
+    """
+    Return whether ``fixed``, with whitespace removed, is ``raw`` with one or more commas inserted and nothing else changed.
+
+    :param raw: Original file bytes.
+    :param fixed: Rewritten file bytes.
+    :return: True when only commas were inserted.
+    """
     old, new = b"".join(raw.split()), b"".join(fixed.split())
     matched = 0
 

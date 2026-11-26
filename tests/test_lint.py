@@ -280,7 +280,7 @@ def test_bundled_flake8_and_pydoclint_options(
     capfd: pytest.CaptureFixture[str],
 ) -> None:
     """
-    Only ANN401 and the short docstring's missing sections are reported.
+    Only ANN401 and the short and private docstrings' missing sections are reported.
 
     :param tmp_path: Project directory the fixture files are written to.
     :param monkeypatch: Used to run max-lint from the project directory.
@@ -296,6 +296,9 @@ def test_bundled_flake8_and_pydoclint_options(
         "src/mod.py:33:1: DOC101",
         "src/mod.py:33:1: DOC103",
         "src/mod.py:33:1: DOC201",
+        "src/mod.py:38:1: DOC101",
+        "src/mod.py:38:1: DOC103",
+        "src/mod.py:38:1: DOC201",
     ]
 
 

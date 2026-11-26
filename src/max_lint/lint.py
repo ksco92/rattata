@@ -22,7 +22,12 @@ TOOL_ENVIRONMENT = {"DOCUTILSCONFIG": str(STYLE / "docutils.conf"), "PYTHONSAFEP
 
 
 def _identity(path: str | Path) -> tuple[int, int]:
-    """Return the device and inode of the file or directory ``path`` resolves to."""
+    """
+    Return the device and inode of the file or directory ``path`` resolves to.
+
+    :param path: Filesystem path to stat.
+    :return: ``(st_dev, st_ino)`` pair.
+    """
     status = os.stat(path)
 
     return status.st_dev, status.st_ino

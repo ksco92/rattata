@@ -15,7 +15,12 @@ PLAIN_PYPROJECT = '[tool.max-lint]\npaths = ["src"]\n'
 
 
 def _write_files(root: Path, files: dict[str, str]) -> None:
-    """Write each relative path in ``files`` under ``root``."""
+    """
+    Write each relative path in ``files`` under ``root``.
+
+    :param root: Directory to write fixture files into.
+    :param files: Mapping of relative paths to file contents.
+    """
     for name, text in files.items():
         path = root / name
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -23,7 +28,14 @@ def _write_files(root: Path, files: dict[str, str]) -> None:
 
 
 def _lint(root: Path, monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixture[str]) -> tuple[int, str]:
-    """Run ``max-lint lint --check`` in ``root`` and return exit code and output."""
+    """
+    Run ``max-lint lint --check`` in ``root`` and return exit code and output.
+
+    :param root: Project directory to lint.
+    :param monkeypatch: Changes cwd to ``root``.
+    :param capfd: Captures stdout and stderr.
+    :return: ``(exit_code, combined_output)`` tuple.
+    """
     monkeypatch.chdir(root)
     exit_code = main(["lint", "--check"])
     captured = capfd.readouterr()
@@ -32,12 +44,23 @@ def _lint(root: Path, monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixt
 
 
 def _codes(output: str) -> list[str]:
-    """Return every flake8 ``path:row:col: CODE`` hit in ``output``."""
+    """
+    Return every flake8 ``path:row:col: CODE`` hit in ``output``.
+
+    :param output: Combined stdout and stderr from flake8.
+    :return: Matching ``path:row:col: CODE`` strings in order.
+    """
     return re.findall(r"^(\S+\.py:\d+:\d+: [A-Z]+[0-9]+)", output, flags=re.MULTILINE)
 
 
 def _run_plugin(source: str, filename: str = "src/mod.py") -> list[tuple[int, int, str]]:
-    """Run ``MaxLintPlugin`` in-process on ``source`` and return ``(line, col, code)`` tuples."""
+    """
+    Run ``MaxLintPlugin`` in-process on ``source`` and return ``(line, col, code)`` tuples.
+
+    :param source: Python source text to check.
+    :param filename: Virtual path used to classify test vs production files.
+    :return: ``(line, col, code)`` tuples for each reported violation.
+    """
     tree = ast.parse(source)
     lines = source.splitlines(keepends=True)
     tokens = list(tokenize.generate_tokens(io.StringIO(source).readline))
@@ -264,7 +287,7 @@ def test_documented_absence_and_crumb_todo_report_mxl008_and_mxl009(
         "# Panics: never\n"
         "VALUE = 1\n\n\n"
         "def _helper() -> int:\n"
-        '    """\n    Return one.\n\n    :raises: nothing\n    """\n'
+        '    """\n    Return one.\n\n    :return: One.\n    :raises: nothing\n    """\n'
         "    return VALUE\n"
     )
     _write_files(tmp_path, {"pyproject.toml": PLAIN_PYPROJECT, "src/mod.py": source})
@@ -275,7 +298,12 @@ def test_documented_absence_and_crumb_todo_report_mxl008_and_mxl009(
     exit_code, output = _lint(tmp_path, monkeypatch, capfd)
 
     assert exit_code == 1
-    assert _codes(output) == ["src/mod.py:3:1: MXL009", "src/mod.py:4:1: MXL008", "src/mod.py:9:5: MXL008"]
+    assert _codes(output) == [
+        "src/mod.py:3:1: MXL009",
+        "src/mod.py:4:1: MXL008",
+        "src/mod.py:8:1: DOC502",
+        "src/mod.py:9:5: MXL008",
+    ]
 
 
 def test_test_file_rules_report_mxl010_mxl011_mxl012(
