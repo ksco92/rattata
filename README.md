@@ -213,7 +213,7 @@ The tools are add-trailing-comma, black, isort, flake8, mypy, pytest, pytest-cov
 
 - add-trailing-comma adds missing trailing commas in write mode; it has no settings, and no project file changes what it does.
 - black and isort use line length 130, and isort uses `profile = "black"`. black targets the Python versions allowed by `requires-python`.
-- flake8 selects `ANN401` in addition to its defaults and ignores `E203` and `E501`. pydoclint checks Sphinx-style docstrings without argument types in the docstring and skips private functions and return types.
+- flake8 selects `ANN401` and the bundled `MXL` plugin (`MXL001`–`MXL012`: deprecated `typing` imports, module docstrings over 10 lines, multi-exception `except`, silent broad `except: pass`, comment/docstring prose over 40%, bare `NotImplementedError()`, nesting past 4, documented absences, source `TODO`/`FIXME`/`XXX`/`HACK` crumbs, and `unittest`/test-class/`@patch`/sibling-test-import bans in tests) in addition to its defaults and ignores `E203` and `E501`. pydoclint checks Sphinx-style docstrings without argument types in the docstring and skips private functions and return types.
 - Docstrings are parsed with the `raw` and `include` directives disabled, so flake8 reports each use as `RST299`.
 - mypy always runs with `disallow_untyped_defs`, `warn_redundant_casts`, `no_implicit_optional`, `disallow_any_unimported`, `disallow_any_generics`, `disallow_any_explicit` and `warn_return_any`.
 - Coverage is branch coverage with a floor of 95% compared to two decimals, the missing lines shown, and `pragma: no cover`, `if __name__ == .__main__.:` and `^\s*if (typing\.)?TYPE_CHECKING:` as the excluded lines.
