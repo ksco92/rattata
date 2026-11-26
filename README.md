@@ -190,7 +190,7 @@ A first run on code written to another style usually meets three things:
 - Trailing commas: `max-lint lint` adds the missing ones, so the first run rewrites many files. `max-lint lint --check` reports them through flake8 as `C81x` findings once black accepts every file, and stops at black with `would reformat <file>` before that. The shapes that write mode leaves for hand-fixing are under [Known limitations](#known-limitations).
 - Libraries without type information: mypy reports `error: Skipping analyzing "boto3": module is installed, but missing library stubs or py.typed marker  [import-untyped]`. Add the library's stub package to the project's dev dependencies, with the extras for the services in use and at the version of the project's `boto3`, for example `uv add --dev "boto3-stubs[s3]==1.44.4"` for boto3 1.44.4. mypy then checks every call into the library, such as `Argument "Bucket" to "create_bucket" of "S3Client" has incompatible type "int"; expected "str"  [arg-type]`.
   - `ignore_missing_imports = true` in `[tool.mypy]` hides the message instead, but everything imported from the library becomes `Any`: its calls go unchecked and annotations that use its types are reported as `no-any-unimported`.
-- Methods and tests: flake8 reports `ANN101` and `ANN102` on a `self` or `cls` without an annotation, so write `self: Self` and `cls: type[Self]` with `Self` from `typing`. Test functions are held to the same rules as source: without `-> None` and a docstring they get `ANN201` and `D103`.
+- Methods and tests: flake8 reports `ANN101` and `ANN102` on a `self` or `cls` without an annotation, so write `self: Self` and `cls: type[Self]` with `Self` from `typing`. Test functions are held to the same annotation and docstring rules as source: without `-> None` and a docstring they get `ANN201` and `D103` (while `MXL009` skips tests and `MXL010`–`MXL012` apply only in tests).
 
 ## Configuration
 
@@ -209,11 +209,11 @@ Every path in `paths` and `test-paths` must exist; paths are relative to `pyproj
 
 ## Bundled style
 
-The tools are add-trailing-comma, black, isort, flake8, mypy, pytest, pytest-cov, pytest-socket and coverage, each pinned to an exact version in [pyproject.toml](https://github.com/ksco92/rattata/blob/main/pyproject.toml). The flake8 plugins are flake8-annotations, flake8-docstrings, flake8-rst-docstrings, flake8-commas, flake8-multiline-containers and pydoclint.
+The tools are add-trailing-comma, black, isort, flake8, mypy, pytest, pytest-cov, pytest-socket and coverage, each pinned to an exact version in [pyproject.toml](https://github.com/ksco92/rattata/blob/main/pyproject.toml). The third-party flake8 plugins are flake8-annotations, flake8-docstrings, flake8-rst-docstrings, flake8-commas, flake8-multiline-containers and pydoclint, alongside the bundled `MXL` plugin.
 
 - add-trailing-comma adds missing trailing commas in write mode; it has no settings, and no project file changes what it does.
 - black and isort use line length 130, and isort uses `profile = "black"`. black targets the Python versions allowed by `requires-python`.
-- flake8 selects `ANN401` in addition to its defaults and ignores `E203` and `E501`. pydoclint checks Sphinx-style docstrings without argument types in the docstring and skips private functions and return types.
+- flake8 selects `ANN401` and the bundled `MXL` plugin (`MXL001`–`MXL012`: deprecated `typing` imports, module docstrings over 10 lines, multi-exception `except`, silent broad `except: pass`, comment/docstring prose over 40%, bare `NotImplementedError()`, nesting past 4, documented absences, source `TODO`/`FIXME`/`XXX`/`HACK` crumbs, and `unittest`/test-class/`@patch`/sibling-test-import bans in tests) in addition to its defaults and ignores `E203` and `E501`. pydoclint checks Sphinx-style docstrings (including private functions) without argument types in the docstring and skips checking return and yield types.
 - Docstrings are parsed with the `raw` and `include` directives disabled, so flake8 reports each use as `RST299`.
 - mypy always runs with `disallow_untyped_defs`, `warn_redundant_casts`, `no_implicit_optional`, `disallow_any_unimported`, `disallow_any_generics`, `disallow_any_explicit` and `warn_return_any`.
 - Coverage is branch coverage with a floor of 95% compared to two decimals, the missing lines shown, and `pragma: no cover`, `if __name__ == .__main__.:` and `^\s*if (typing\.)?TYPE_CHECKING:` as the excluded lines.

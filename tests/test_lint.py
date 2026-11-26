@@ -14,11 +14,10 @@ from typing import Self
 
 import pytest
 
-from max_lint.cli import main
 from max_lint.config import load_config
 from max_lint.lint import lint_commands
+from tests.helpers import PLAIN_PYPROJECT, flake8_codes, lint, write_files
 
-PLAIN_PYPROJECT = '[tool.max-lint]\npaths = ["src"]\n'
 LONG_LINE = (
     'PARTS = [basename("/tmp/archive.tar.gz"), join("first", "second"), "a string literal which pads this line to 120 chars"]\n'
 )
@@ -152,46 +151,6 @@ class BeaconHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
 
 
-def write_files(root: Path, files: dict[str, str]) -> None:
-    """
-    Write each relative path in ``files`` under ``root``, creating parent directories.
-
-    :param root: Directory the files are written under.
-    :param files: File contents by relative path.
-    """
-    for name, text in files.items():
-        path = root / name
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text)
-
-
-def lint(root: Path, monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixture[str], *arguments: str) -> tuple[int, str]:
-    r"""
-    Run ``max-lint lint`` from ``root`` and return the exit code and the combined output, with ``root`` replaced.
-
-    :param root: Project directory the command runs in.
-    :param monkeypatch: Changes the working directory to ``root``.
-    :param capfd: Captures the output of the tools the run starts.
-    :param \*arguments: Arguments given to max-lint.
-    :return: Exit code and combined output.
-    """
-    monkeypatch.chdir(root)
-    exit_code = main(["lint", *arguments])
-    captured = capfd.readouterr()
-
-    return exit_code, (captured.out + captured.err).replace(str(Path.cwd()), "<root>")
-
-
-def flake8_codes(output: str) -> list[str]:
-    """
-    Return each flake8 violation in ``output`` as ``path:row:col: CODE``.
-
-    :param output: Combined output of the tools.
-    :return: Each violation as ``path:row:col: CODE``.
-    """
-    return re.findall(r"^(\S+\.py:\d+:\d+: [A-Z]+[0-9]+)", output, flags=re.MULTILINE)
-
-
 def test_bundled_style_accepts_long_line_and_reports_missing_module_docstring(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -280,7 +239,7 @@ def test_bundled_flake8_and_pydoclint_options(
     capfd: pytest.CaptureFixture[str],
 ) -> None:
     """
-    Only ANN401 and the short docstring's missing sections are reported.
+    Only ANN401 and the short and private docstrings' missing sections are reported.
 
     :param tmp_path: Project directory the fixture files are written to.
     :param monkeypatch: Used to run max-lint from the project directory.
@@ -296,6 +255,9 @@ def test_bundled_flake8_and_pydoclint_options(
         "src/mod.py:33:1: DOC101",
         "src/mod.py:33:1: DOC103",
         "src/mod.py:33:1: DOC201",
+        "src/mod.py:38:1: DOC101",
+        "src/mod.py:38:1: DOC103",
+        "src/mod.py:38:1: DOC201",
     ]
 
 

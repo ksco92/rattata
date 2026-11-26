@@ -9,6 +9,7 @@ from coverage import Coverage
 from max_lint.cli import main
 from max_lint.config import Config
 from max_lint.pytest_step import pytest_command
+from tests.helpers import write_files
 
 BASE_PYPROJECT = """[tool.max-lint]
 paths = ["src"]
@@ -67,19 +68,6 @@ LOOSE_COVERAGE = {
 }
 NOT_REACHED = "Required test coverage of 95% not reached"
 NO_FILES = "measured no files"
-
-
-def write_files(root: Path, files: dict[str, str]) -> None:
-    """
-    Write each relative path in ``files`` under ``root``, creating parent directories.
-
-    :param root: Directory the files are written under.
-    :param files: File contents by relative path.
-    """
-    for name, text in files.items():
-        path = root / name
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text)
 
 
 def run_max_lint(
