@@ -1,11 +1,11 @@
 # Changelog
 
-What each release of max-lint changes in a project that uses it. The bundled style and the tool versions are part of the package, so a release can add findings or rewrite files; read every section between the version a project has and the one it moves to. Versions before 0.6.0 were not published.
+What each release of max-lint changes in a project that uses it. The bundled style and the tool versions are part of the package, so a release can add findings or rewrite files; read every section between the version a project has and the one it moves to.
 
 ## 0.11.1 (2026-11-27)
 
 - Nothing changes in what max-lint checks, rewrites or reports.
-- The PyPI project page links this changelog. From this version on, the publish workflow creates the `vX.Y.Z` tag of each published version and its GitHub Release, whose notes are its section here.
+- The PyPI project page links this changelog.
 
 ## 0.11.0 (2026-11-25)
 
@@ -20,18 +20,17 @@ What each release of max-lint changes in a project that uses it. The bundled sty
   - `MXL008`: a comment or docstring that documents an absence, such as `:raises: none` or `# Panics: never`.
   - `MXL009`: a `TODO`, `FIXME`, `XXX` or `HACK` comment outside test files.
   - In test files only: `MXL010` for importing `unittest` or one of its modules other than `unittest.mock`, and for a class whose name starts with `Test`; `MXL011` for a `@patch` decorator, to be replaced with `with patch(...)`; `MXL012` for importing a sibling `test_` module.
-- A file counts as a test file for `MXL009` to `MXL012` when its name is `test_*`, `*_test.py` or `conftest.py`, or when a directory above it is named `tests` or `test`. `test-paths` does not decide this.
+- A file counts as a test file for `MXL009` to `MXL012` when its name is `test_*`, `*_test.py` or `conftest.py`, or when a directory in its path relative to the project directory is named `tests` or `test`. `test-paths` does not decide this.
 - pydoclint checks private functions, those whose name starts with `_`, like public ones, so their docstrings now need the `:param:`, `:return:` and `:raises:` fields public functions need.
-- pydoclint no longer checks yield types, as it already did not check return types.
+- pydoclint no longer checks yield types.
 
 ## 0.10.0 (2026-11-17)
 
 - Coverage leaves `if TYPE_CHECKING:` and `if typing.TYPE_CHECKING:` blocks out of the measurement, so imports made only for the type checker no longer count as missed lines or branches, and the reported coverage can rise.
-- The README's known limitations describe the `DOC503` that pydoclint reports on a function that raises a stored exception, such as `raise error`, and how to silence it with `# noqa: DOC503` on the `def` line.
 
 ## 0.9.2 (2026-11-17)
 
-- Nothing changes in what max-lint checks, rewrites or reports. The README gains a section on adopting max-lint in an existing project and a known limitation: a function with type parameters, such as `def first[T](items: list[T]) -> T:`, can get `D103` even with a docstring.
+- Nothing changes in what max-lint checks, rewrites or reports.
 
 ## 0.9.1 (2026-11-17)
 
@@ -41,7 +40,7 @@ What each release of max-lint changes in a project that uses it. The bundled sty
 
 - New dependency: add-trailing-comma 4.0.0, which brings tokenize-rt.
 - `max-lint lint` and a bare `max-lint` add missing trailing commas: they run black, add-trailing-comma, black again and isort. The first run after the upgrade can rewrite files that black alone left as they were.
-- A rewrite is kept only when it inserts commas and leaves the file's syntax tree unchanged. A file that declares an encoding other than UTF-8, has a bare carriage return, has a `# fmt: off`, `# fmt: skip` or `# yapf: disable` comment, or cannot be written is left as it was, and flake8 still reports its missing commas.
+- A rewrite is kept only when it inserts commas and leaves the file's syntax tree unchanged. A file that declares an encoding other than UTF-8, has a bare carriage return, has a `# fmt: off`, `# fmt: skip` or `# yapf: disable` comment, or cannot be opened for writing is left as it was, and flake8 still reports its missing commas.
 - The `--check` modes do not run add-trailing-comma and write nothing; missing commas are reported by flake8 as before.
 
 ## 0.8.0 (2026-11-16)

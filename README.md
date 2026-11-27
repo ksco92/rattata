@@ -28,7 +28,7 @@ Requires Python 3.13 or newer and [uv](https://docs.astral.sh/uv/). Add max-lint
 uv add --dev max-lint
 ```
 
-What each release changes in a project that uses it, such as new findings or rewritten files, is in [CHANGELOG.md](https://github.com/ksco92/rattata/blob/main/CHANGELOG.md).
+Release notes are in [CHANGELOG.md](https://github.com/ksco92/rattata/blob/main/CHANGELOG.md).
 
 ## Usage
 

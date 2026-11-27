@@ -119,7 +119,6 @@ jobs:
       VERSION: ${{ needs.version_check.outputs.version }}
       TAG: v${{ needs.version_check.outputs.version }}
       GH_TOKEN: ${{ github.token }}
-      GH_REPO: ${{ github.repository }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -128,20 +127,16 @@ jobs:
       - name: tag the built commit
         run: |
           set -euo pipefail
-          if remote=$(git ls-remote --exit-code origin "refs/tags/$TAG" "refs/tags/$TAG^{}"); then
-            tagged=$(awk 'END { print $1 }' <<< "$remote")
-            if [[ "$tagged" != "$GITHUB_SHA" ]]; then
-              echo "::error::$TAG points at $tagged, not at the built commit $GITHUB_SHA"
-              exit 1
-            fi
-            echo "$TAG already points at $GITHUB_SHA"
-          elif [[ $? -eq 2 ]]; then
+          tagged=$(git ls-remote origin "refs/tags/$TAG" "refs/tags/$TAG^{}" | awk 'END { print $1 }')
+          if [[ -z "$tagged" ]]; then
             git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
               tag -a "$TAG" -m "$PROJECT $VERSION" "$GITHUB_SHA"
             git push origin "refs/tags/$TAG"
-          else
-            echo "::error::git ls-remote failed"
+          elif [[ "$tagged" != "$GITHUB_SHA" ]]; then
+            echo "::error::$TAG points at $tagged, not at the built commit $GITHUB_SHA"
             exit 1
+          else
+            echo "$TAG already points at $GITHUB_SHA"
           fi
       - name: create the GitHub Release
         run: |
