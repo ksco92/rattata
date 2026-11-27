@@ -220,6 +220,7 @@ The tools are add-trailing-comma, black, isort, flake8, mypy, pytest, pytest-cov
 - mypy always runs with `disallow_untyped_defs`, `warn_redundant_casts`, `no_implicit_optional`, `disallow_any_unimported`, `disallow_any_generics`, `disallow_any_explicit` and `warn_return_any`.
 - Coverage is branch coverage with a floor of 95% compared to two decimals, the missing lines shown, and `pragma: no cover`, `if __name__ == .__main__.:` and `^\s*if (typing\.)?TYPE_CHECKING:` as the excluded lines.
 - pytest runs with `--import-mode=importlib`, and the current directory is importable, so a project that is not an installed package can import its own modules in its tests.
+- Tests run with pytest-socket's `--disable-socket --allow-unix-socket`: during a test, creating a socket of any family but `AF_UNIX` through the `socket.socket` attribute in the pytest process raises `SocketBlockedError`; a socket made any other way (a `socket` class imported by name, a child process, code that runs at import) is not blocked. `@pytest.mark.enable_socket` lifts the block for one test; `addopts = "--allow-hosts=127.0.0.1"` in `[tool.pytest.ini_options]` lifts it for every test and only makes `connect()` to another host fail.
 
 Settings for these tools in the project (`[tool.black]`, `[tool.isort]`, `.flake8`, `setup.cfg`, `tox.ini`, `.isort.cfg`, `[tool.coverage.*]`, `.coveragerc` and `.coveragerc.toml`) have no effect.
 

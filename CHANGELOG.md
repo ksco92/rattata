@@ -2,6 +2,10 @@
 
 What each release of max-lint changes in a project that uses it. The bundled style and the tool versions are part of the package, so a release can add findings or rewrite files; read every section between the version a project has and the one it moves to.
 
+## 0.12.0 (2026-11-27)
+
+- `max-lint test` and a bare `max-lint` run pytest with pytest-socket's `--disable-socket --allow-unix-socket`, so a test that creates a network socket with `socket.socket` now fails with `SocketBlockedError`. `@pytest.mark.enable_socket` lifts the block for one test; `addopts = "--allow-hosts=127.0.0.1"` in `[tool.pytest.ini_options]` lifts it for every test and only makes `connect()` to another host fail.
+
 ## 0.11.2 (2026-11-27)
 
 - Nothing changes in what max-lint checks, rewrites or reports.

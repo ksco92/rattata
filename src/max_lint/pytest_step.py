@@ -48,6 +48,8 @@ def pytest_command(config: Config, scratch: Path) -> list[str]:
         "-m",
         "pytest",
         "--import-mode=importlib",
+        "--disable-socket",
+        "--allow-unix-socket",
         "--cov-reset",
         *[f"--cov={source}" for source in config.coverage_source],
         f"--cov-config={coverage_config}",

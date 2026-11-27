@@ -768,3 +768,92 @@ def test_coverage_omit_reaches_coverage_unchanged(tmp_path: Path, pattern: str) 
     pytest_command(Config(["src"], ["tests"], [], ["src"], [pattern, "plain"], {}, []), tmp_path)
 
     assert Coverage(config_file=str(tmp_path / "coverage.toml")).get_option("run:omit") == [pattern, "plain"]
+
+
+SOCKET_TEST = '''"""Tests that open a socket."""
+
+import socket
+
+
+def test_socket() -> None:
+    """An ``AF_INET`` socket is created."""
+    socket.socket(socket.AF_INET, socket.SOCK_STREAM).close()
+'''
+MARKED_SOCKET_TEST = '''"""Tests that open a socket."""
+
+import socket
+
+import pytest
+
+
+@pytest.mark.enable_socket
+def test_socket() -> None:
+    """An ``AF_INET`` socket is created."""
+    socket.socket(socket.AF_INET, socket.SOCK_STREAM).close()
+'''
+EVENT_LOOP_TEST = '''"""Tests that run an event loop."""
+
+import asyncio
+
+
+def test_event_loop() -> None:
+    """An event loop starts."""
+    asyncio.run(asyncio.sleep(0))
+'''
+LOOPBACK_TEST = '''"""Tests that call a local server."""
+
+import http.server
+import threading
+import urllib.request
+
+
+def test_loopback_request() -> None:
+    """A request to a server on 127.0.0.1 succeeds."""
+    server = http.server.HTTPServer(("127.0.0.1", 0), http.server.SimpleHTTPRequestHandler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+
+    with urllib.request.urlopen(f"http://127.0.0.1:{server.server_address[1]}/", timeout=5) as response:
+        assert response.status == 200
+'''
+
+
+@pytest.mark.parametrize(
+    ("files", "exit_code", "fragment"),
+    [
+        ({**BASE_FILES, "tests/test_socket.py": SOCKET_TEST}, 1, "SocketBlockedError"),
+        ({**BASE_FILES, "tests/test_loop.py": EVENT_LOOP_TEST}, 0, "2 passed in"),
+        ({**BASE_FILES, "tests/test_socket.py": MARKED_SOCKET_TEST}, 0, "2 passed in"),
+        (
+            {
+                **BASE_FILES,
+                "pyproject.toml": BASE_PYPROJECT + 'addopts = "--allow-hosts=127.0.0.1"\n',
+                "tests/test_loopback.py": LOOPBACK_TEST,
+            },
+            0,
+            "2 passed in",
+        ),
+    ],
+    ids=["socket-blocked", "event-loop", "enable-socket-marker", "allow-hosts"],
+)
+def test_network_sockets_are_blocked_unless_allowed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+    files: dict[str, str],
+    exit_code: int,
+    fragment: str,
+) -> None:
+    """
+    A socket test fails with ``SocketBlockedError`` unless the marker or ``--allow-hosts`` allows it, and an event loop passes.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    :param files: Project files written before the run.
+    :param exit_code: Expected exit status.
+    :param fragment: Text the output contains.
+    """
+    result_code, output = run_max_lint(tmp_path, files, monkeypatch, capfd, "test")
+
+    assert result_code == exit_code
+    assert fragment in output
