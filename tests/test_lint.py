@@ -746,6 +746,7 @@ def test_docstring_parsing_ignores_project_docutils_config(
     assert outside.read_text() == "unchanged\n"
 
 
+@pytest.mark.allow_hosts(["127.0.0.1"])
 def test_docstring_raw_and_include_directives_are_disabled(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
