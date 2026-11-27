@@ -35,4 +35,4 @@ A change that should be released bumps `version` in `pyproject.toml` and the mat
 
 A version bump comes with its section in [CHANGELOG.md](CHANGELOG.md), `## X.Y.Z (YYYY-MM-DD)` with the date of the merge, saying what the upgrade does to a project that uses max-lint; the publish workflow refuses to build a version that has no section. A merge that does not bump the version adds its line under a `## Unreleased` heading at the top of the file, and the next bump renames that heading to its version.
 
-After the upload to PyPI, the publish workflow creates the annotated tag `vX.Y.Z` on the commit it built and the GitHub Release for it, with the version's changelog section as the notes. Tags and GitHub Releases are never created by hand.
+After the upload to PyPI, the publish workflow creates the annotated tag `vX.Y.Z` on the commit it built and the GitHub Release for it, with the version's changelog section as the notes. Tags and GitHub Releases are never created by hand. When the tag or release step fails, "Re-run failed jobs" on that run completes them; "Re-run all jobs" finds the version on PyPI and skips them.

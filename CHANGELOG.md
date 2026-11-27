@@ -5,11 +5,11 @@ What each release of max-lint changes in a project that uses it. The bundled sty
 ## 0.11.1 (2026-11-27)
 
 - Nothing changes in what max-lint checks, rewrites or reports.
-- The PyPI project page links this changelog. From this version on, every published version has a `vX.Y.Z` tag and a GitHub Release whose notes are its section here.
+- The PyPI project page links this changelog. From this version on, the publish workflow creates the `vX.Y.Z` tag of each published version and its GitHub Release, whose notes are its section here.
 
 ## 0.11.0 (2026-11-25)
 
-- flake8 runs a bundled `MXL` plugin, so an upgrade brings new findings in every linted file:
+- flake8 runs a bundled `MXL` plugin on every linted file, with these new findings:
   - `MXL001`: an import of a deprecated `typing` alias, such as `List`, `Dict`, `Optional`, `Union` or `Callable`; use the builtin generic, `X | Y` or `collections.abc`.
   - `MXL002`: a module docstring longer than 10 lines.
   - `MXL003`: an `except` clause that names a tuple of exceptions; write one clause per exception.
