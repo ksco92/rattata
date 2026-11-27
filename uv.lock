@@ -460,7 +460,7 @@ wheels = [
 
 [[package]]
 name = "max-lint"
-version = "0.12.0"
+version = "0.13.0"
 source = { editable = "." }
 dependencies = [
     { name = "add-trailing-comma" },

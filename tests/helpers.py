@@ -47,4 +47,4 @@ def flake8_codes(output: str) -> list[str]:
     :param output: combined output of the tools.
     :return: each violation as ``path:row:col: CODE``.
     """
-    return re.findall(r"^(\S+\.py:\d+:\d+: [A-Z]+[0-9]+)", output, flags=re.MULTILINE)
+    return re.findall(r"^(\S(?:.*?\S)?\.py:\d+:\d+: [A-Z]+[0-9]+)", output, flags=re.MULTILINE)

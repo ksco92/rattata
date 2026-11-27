@@ -1,6 +1,7 @@
 """Build the add-trailing-comma, black, isort, flake8 and mypy commands that apply the bundled style."""
 
 import contextlib
+import json
 import os
 import re
 import stat
@@ -99,12 +100,14 @@ def lint_commands(config: Config, check: bool, scratch: Path) -> list[list[str]]
 
     :param config: project settings.
     :param check: run black and isort in their check modes and leave out add-trailing-comma, so nothing is written.
-    :param scratch: directory outside the project for the generated flake8 config; it must outlive the commands.
+    :param scratch: directory outside the project for the generated flake8 config, which carries the absolute test paths
+        to the ``MXL`` rules; it must outlive the commands.
     :return: one argument list per tool, each run with the current interpreter.
     """
     targets = python_files(config)
-    ignores = scratch / "per-file-ignores.ini"
-    ignores.write_text(per_file_ignores(config, targets), encoding="utf-8")
+    generated = scratch / "flake8.ini"
+    test_paths = json.dumps([os.path.abspath(path) for path in config.test_paths])
+    generated.write_text(f"{per_file_ignores(config, targets)}max-lint-test-paths = {test_paths}\n", encoding="utf-8")
     formatters = str(STYLE / "formatters.toml")
     root = Path.cwd()
     black = [sys.executable, "-m", "black", "--config", formatters]
@@ -115,7 +118,7 @@ def lint_commands(config: Config, check: bool, scratch: Path) -> list[list[str]]
         black.append("--check")
         isort.append("--check-only")
 
-    flake8 = [sys.executable, "-m", "flake8", "--config", str(STYLE / "flake8.ini"), "--append-config", str(ignores)]
+    flake8 = [sys.executable, "-m", "flake8", "--config", str(STYLE / "flake8.ini"), "--append-config", str(generated)]
 
     commands = [[*command, "--", *targets] for command in (black, isort, flake8)]
 

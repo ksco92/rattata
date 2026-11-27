@@ -2,6 +2,10 @@
 
 What each release of max-lint changes in a project that uses it. The bundled style and the tool versions are part of the package, so a release can add findings or rewrite files; read every section between the version a project has and the one it moves to.
 
+## 0.13.0 (2026-11-27)
+
+- For `MXL009` to `MXL012`, a test file is now a file listed in `test-paths` or under a directory listed there, whatever its name. A file named `test_*.py`, `*_test.py` or `conftest.py`, or under a directory named `tests` or `test`, that is outside `test-paths` now gets `MXL009` and loses `MXL010` to `MXL012`; a file under `test-paths` with any other name now gets `MXL010` to `MXL012` and no longer gets `MXL009`. flake8 run directly, without max-lint, treats no file as a test file.
+
 ## 0.12.0 (2026-11-27)
 
 - `max-lint test` and a bare `max-lint` run pytest with pytest-socket's `--disable-socket --allow-unix-socket`, so a test that creates a network socket with `socket.socket` now fails with `SocketBlockedError`. `@pytest.mark.enable_socket` lifts the block for one test; `addopts = "--allow-hosts=127.0.0.1"` in `[tool.pytest.ini_options]` lifts it for every test and only makes `connect()` to another host fail.
