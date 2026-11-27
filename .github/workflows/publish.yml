@@ -127,7 +127,8 @@ jobs:
       - name: tag the built commit
         run: |
           set -euo pipefail
-          tagged=$(git ls-remote origin "refs/tags/$TAG" "refs/tags/$TAG^{}" | awk 'END { print $1 }')
+          tagged=$(git ls-remote origin "refs/tags/$TAG" "refs/tags/$TAG^{}" \
+            | awk -v ref="refs/tags/$TAG" '$2 == ref || $2 == ref "^{}" { sha = $1 } END { print sha }')
           if [[ -z "$tagged" ]]; then
             git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
               tag -a "$TAG" -m "$PROJECT $VERSION" "$GITHUB_SHA"
