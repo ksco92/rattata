@@ -560,6 +560,32 @@ def test_per_file_ignores_apply_only_to_matching_files(
     assert flake8_codes(output) == ["app/current.py:1:1: D100"]
 
 
+def test_star_glob_ignores_a_code_in_every_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    """
+    A ``*`` glob also matches ``/``, so its entry suppresses its code in every file.
+
+    :param tmp_path: Project directory the fixture files are written to.
+    :param monkeypatch: Used to run max-lint from the project directory.
+    :param capfd: Captures the output of the tools the run starts.
+    """
+    write_files(
+        tmp_path,
+        {
+            "pyproject.toml": PLAIN_PYPROJECT + 'per-file-ignores = { "*" = ["D100"] }\n',
+            "src/a/b/deep.py": "VALUE = 1\n",
+            "src/top.py": "VALUE = 1\n",
+        },
+    )
+
+    exit_code, _ = lint(tmp_path, monkeypatch, capfd, "--check")
+
+    assert exit_code == 0
+
+
 def test_exclude_removes_file_from_every_tool(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
