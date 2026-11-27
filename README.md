@@ -28,6 +28,8 @@ Requires Python 3.13 or newer and [uv](https://docs.astral.sh/uv/). Add max-lint
 uv add --dev max-lint
 ```
 
+Release notes are in [CHANGELOG.md](https://github.com/ksco92/rattata/blob/main/CHANGELOG.md).
+
 ## Usage
 
 A project declares what it owns in a `[tool.max-lint]` table of its `pyproject.toml`. Run the commands with `uv run` from the directory that holds `pyproject.toml`. This project, with max-lint added as above; the second block holds three files, each starting at its `# path` comment:

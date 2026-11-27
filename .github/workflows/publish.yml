@@ -1,8 +1,9 @@
 name: publish
 
 # On every push to main and on manual dispatch: publish the version in
-# pyproject.toml to PyPI unless PyPI already has it. Publishing uses trusted
-# publishing (OIDC); there is no stored token.
+# pyproject.toml to PyPI unless PyPI already has it, then tag the built commit
+# and create its GitHub Release. Publishing uses trusted publishing (OIDC);
+# there is no stored token.
 
 on:
   push:
@@ -19,6 +20,13 @@ permissions:
 env:
   UV_LOCKED: "1"
   PROJECT: max-lint
+  # awk program, run with -v version=X.Y.Z on CHANGELOG.md: prints the body of
+  # that version's section and fails when the section is missing or empty.
+  CHANGELOG_SECTION: |
+    found && /^## / { exit }
+    index($0, "## " version " (") == 1 { found = 1; next }
+    found && (started || NF) { started = 1; print }
+    END { exit !started }
 
 jobs:
   version_check:
@@ -59,6 +67,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: check CHANGELOG.md has a section for the version
+        run: |
+          awk -v version="$VERSION" "$CHANGELOG_SECTION" CHANGELOG.md > /dev/null \
+            || { echo "::error::CHANGELOG.md has no section for $VERSION"; exit 1; }
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           enable-cache: false
@@ -94,3 +106,46 @@ jobs:
           name: dist
           path: dist
       - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
+
+  release:
+    name: tag and release
+    needs: [version_check, publish]
+    if: github.ref == 'refs/heads/main' && needs.version_check.outputs.skip == 'false'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.version_check.outputs.version }}
+      TAG: v${{ needs.version_check.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The tag push below authenticates with this job's token.
+          persist-credentials: true
+      - name: tag the built commit
+        run: |
+          set -euo pipefail
+          tagged=$(git ls-remote origin "refs/tags/$TAG" "refs/tags/$TAG^{}" \
+            | awk -v ref="refs/tags/$TAG" '$2 == ref || $2 == ref "^{}" { sha = $1 } END { print sha }')
+          if [[ -z "$tagged" ]]; then
+            git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              tag -a "$TAG" -m "$PROJECT $VERSION" "$GITHUB_SHA"
+            git push origin "refs/tags/$TAG"
+          elif [[ "$tagged" != "$GITHUB_SHA" ]]; then
+            echo "::error::$TAG points at $tagged, not at the built commit $GITHUB_SHA"
+            exit 1
+          else
+            echo "$TAG already points at $GITHUB_SHA"
+          fi
+      - name: create the GitHub Release
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" > /dev/null; then
+            echo "The release for $TAG already exists"
+          else
+            notes=$(mktemp)
+            awk -v version="$VERSION" "$CHANGELOG_SECTION" CHANGELOG.md > "$notes"
+            gh release create "$TAG" --verify-tag --title "$TAG" --notes-file "$notes"
+          fi
