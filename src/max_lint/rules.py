@@ -1,12 +1,17 @@
 """Flake8 plugin enforcing deterministic coding, docstring, comment-ratio and test rules."""
 
+import argparse
 import ast
+import contextlib
+import json
+import os
 import re
+import sys
 import tokenize
 from collections.abc import Iterator
 from importlib.metadata import version as package_version
 from pathlib import Path
-from typing import Self
+from typing import TYPE_CHECKING, Protocol, Self
 
 DEPRECATED_TYPING_NAMES = frozenset(
     {
@@ -69,20 +74,10 @@ PATCH_DECORATORS = frozenset(
 ErrorTuple = tuple[int, int, str, type["MaxLintPlugin"]]
 
 
-def _is_test_file(filename: str) -> bool:
-    """
-    Return whether ``filename`` is a pytest test file.
+if TYPE_CHECKING:
 
-    :param filename: path of the Python file being checked.
-    :return: True when the file is a test module or lives under a test directory.
-    """
-    path = Path(filename)
-    name = path.name
-
-    if name.startswith("test_") or name.endswith("_test.py") or name == "conftest.py":
-        return True
-
-    return any(part in {"tests", "test"} for part in path.parts[:-1])
+    class _OptionManager(Protocol):
+        def add_option(self: Self, *args: str, **kwargs: str | bool) -> None: ...
 
 
 def _is_banned_unittest_module(module: str) -> bool:
@@ -448,6 +443,7 @@ class MaxLintPlugin:
 
     name = "max-lint-rules"
     version = package_version("max-lint")
+    test_paths: tuple[str, ...] = ()
 
     def __init__(
         self: Self,
@@ -469,6 +465,34 @@ class MaxLintPlugin:
         self.lines = lines or []
         self.file_tokens = file_tokens or []
 
+    @staticmethod
+    def add_options(option_manager: "_OptionManager") -> None:
+        """
+        Register ``max-lint-test-paths``, the JSON list of absolute test paths that max-lint writes into its flake8 config.
+
+        :param option_manager: flake8's option manager.
+        """
+        option_manager.add_option("--max-lint-test-paths", default="[]", parse_from_config=True, help=argparse.SUPPRESS)
+
+    @classmethod
+    def parse_options(cls: type[Self], options: argparse.Namespace) -> None:
+        """
+        Store the test paths from the parsed flake8 options, ending the run unless they are a JSON list of strings.
+
+        Without max-lint the list is empty and no file is a test.
+
+        :param options: flake8's parsed options.
+        """
+        test_paths = None
+
+        with contextlib.suppress(ValueError, RecursionError):
+            test_paths = json.loads(options.max_lint_test_paths)
+
+        if not isinstance(test_paths, list) or not all(isinstance(path, str) for path in test_paths):
+            sys.exit("flake8: the max-lint-test-paths option must be a JSON list of strings.")
+
+        cls.test_paths = tuple(test_paths)
+
     def run(self: Self) -> list[ErrorTuple]:
         """
         Run every ``MXL`` rule on the module and return flake8 violation tuples.
@@ -476,7 +500,8 @@ class MaxLintPlugin:
         :return: ``(line, col, message, cls)`` tuples for each violation.
         """
         errors: list[ErrorTuple] = []
-        is_test = _is_test_file(self.filename)
+        path = Path(os.path.abspath(self.filename))
+        is_test = any(path.is_relative_to(test_path) for test_path in self.test_paths)
         module_doc = _docstring_node(self.tree)
 
         if module_doc is not None and module_doc.end_lineno is not None:

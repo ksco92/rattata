@@ -1,11 +1,17 @@
 """Tests for the bundled ``MXL`` flake8 rules."""
 
+import argparse
 import ast
 import io
+import json
+import os
+import subprocess
+import sys
 import time
 import tokenize
 from importlib.metadata import version as package_version
 from pathlib import Path
+from unittest import mock
 
 import pytest
 
@@ -13,6 +19,7 @@ from max_lint.rules import MaxLintPlugin
 from tests.helpers import PLAIN_PYPROJECT, flake8_codes, lint, write_files
 
 TESTS_PYPROJECT = '[tool.max-lint]\npaths = ["src"]\ntest-paths = ["tests"]\n'
+CLASSIFIED = '"""Fixture module."""\n\nimport unittest\n\n# TODO: later\nVALUE = unittest\n'
 
 SOURCE_MXL_CASES = [
     pytest.param(
@@ -194,20 +201,40 @@ SOURCE_MXL_CASES = [
 ]
 
 
-def _run_plugin(source: str, filename: str = "src/mod.py") -> list[tuple[int, int, str]]:
+def _run_plugin(source: str, filename: str = "src/mod.py", test_paths: tuple[str, ...] = ()) -> list[tuple[int, int, str]]:
     """
     Run ``MaxLintPlugin`` in-process on ``source`` and return ``(line, col, code)`` tuples.
 
     :param source: Python source text to check.
-    :param filename: virtual path used to classify test vs production files.
+    :param filename: virtual path of the file, relative to the working directory.
+    :param test_paths: test paths relative to the working directory, given to the plugin as max-lint gives them.
     :return: ``(line, col, code)`` tuples for each reported violation.
     """
+    test_paths_json = json.dumps([os.path.abspath(path) for path in test_paths])
+    MaxLintPlugin.parse_options(argparse.Namespace(max_lint_test_paths=test_paths_json))
     tree = ast.parse(source)
     lines = source.splitlines(keepends=True)
     tokens = list(tokenize.generate_tokens(io.StringIO(source).readline))
     plugin = MaxLintPlugin(tree=tree, filename=filename, lines=lines, file_tokens=tokens)
 
     return [(line, col, message.split()[0]) for line, col, message, _ in plugin.run()]
+
+
+def _run_flake8(directory: Path, *arguments: str) -> subprocess.CompletedProcess[str]:
+    r"""
+    Run flake8 directly, without max-lint, in ``directory``.
+
+    :param directory: working directory of the run.
+    :param \*arguments: arguments given to flake8.
+    :return: the finished process with its text output.
+    """
+    return subprocess.run(
+        [sys.executable, "-m", "flake8", *arguments],
+        cwd=directory,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
 
 
 @pytest.mark.parametrize(
@@ -283,7 +310,7 @@ def test_relative_imports_else_nesting_and_absence_variants() -> None:
         "from tests.helpers import test_factory\n"
     )
 
-    assert _run_plugin(allowed_imports, filename="tests/test_rel.py") == []
+    assert _run_plugin(allowed_imports, filename="tests/test_rel.py", test_paths=("tests",)) == []
 
     indented_else_if = (
         "def f(x: int) -> int:\n"
@@ -377,7 +404,7 @@ def test_test_file_rules_report_mxl010_mxl011_mxl012(
         },
     )
 
-    in_proc = _run_plugin(test_source, filename="tests/test_bad.py")
+    in_proc = _run_plugin(test_source, filename="tests/test_bad.py", test_paths=("tests",))
 
     assert (3, 0, "MXL010") in in_proc
     assert (4, 0, "MXL010") in in_proc
@@ -412,15 +439,14 @@ def test_plugin_edge_cases_and_security_bounds() -> None:
     assert _run_plugin("") == []
     assert _run_plugin("class Empty:\n    pass\n") == []
     assert _run_plugin("try:\n    pass\nexcept:\n    pass\n") == [(3, 0, "MXL004")]
-    assert _run_plugin("import unittest\n", filename="checks/sample_test.py") == [(1, 0, "MXL010")]
-    assert _run_plugin("import unittest\n", filename="conftest.py") == [(1, 0, "MXL010")]
-    assert _run_plugin("import unittest\n", filename="test/helpers.py") == [(1, 0, "MXL010")]
-    assert _run_plugin("from . import test_other\n", filename="tests/test_a.py") == [(1, 0, "MXL012")]
-    assert _run_plugin("# TODO: test note\n", filename="tests/test_a.py") == []
+    assert _run_plugin("import unittest\n", filename="checks/helpers.py", test_paths=("checks",)) == [(1, 0, "MXL010")]
+    assert _run_plugin("import unittest\n", filename="checks_extra/helpers.py", test_paths=("checks",)) == []
+    assert _run_plugin("from . import test_other\n", filename="tests/test_a.py", test_paths=("tests",)) == [(1, 0, "MXL012")]
+    assert _run_plugin("# TODO: test note\n", filename="tests/test_a.py", test_paths=("tests",)) == []
 
     non_patch_decorators = '@app.patch("/items")\n@decs[0]\ndef test_ok() -> None:\n    pass\n'
 
-    assert _run_plugin(non_patch_decorators, filename="tests/test_a.py") == []
+    assert _run_plugin(non_patch_decorators, filename="tests/test_a.py", test_paths=("tests",)) == []
 
     deep_expr = "def f() -> int:\n    return " + " + ".join(["1"] * 1200) + "\n"
 
@@ -431,3 +457,97 @@ def test_plugin_edge_cases_and_security_bounds() -> None:
 
     assert _run_plugin(many_newlines_doc) == []
     assert time.monotonic() - start < 1.0
+
+
+@pytest.mark.parametrize(
+    ("source_path", "test_path", "tests", "sources"),
+    [
+        pytest.param(
+            "src",
+            "checks",
+            ["checks/helpers.py"],
+            ["src/pkg/test_utils.py", "src/pkg/tests/factories.py"],
+            id="test-names-under-paths",
+        ),
+        pytest.param("src", "./checks", ["checks/helpers.py"], ["src/mod.py"], id="leading-dot-slash"),
+        pytest.param("src", "checks/", ["checks/helpers.py"], ["src/mod.py"], id="trailing-slash"),
+        pytest.param("src", "src/one.py", ["src/one.py"], ["src/two.py"], id="single-file"),
+        pytest.param("src", "../shared/checks", ["../shared/checks/helpers.py"], ["src/mod.py"], id="outside-project"),
+        pytest.param("src", "my checks", ["my checks/helpers.py"], ["src/mod.py"], id="space"),
+        pytest.param("src", "a,b", ["a,b/helpers.py"], ["src/mod.py"], id="comma"),
+        pytest.param("app", "app/checks", ["app/checks/helpers.py"], ["app/main.py"], id="nested-in-source-path"),
+    ],
+)
+def test_test_paths_decide_which_files_are_tests(
+    source_path: str,
+    test_path: str,
+    tests: list[str],
+    sources: list[str],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    """
+    Under ``max-lint lint --check`` the files under ``test-paths`` get ``MXL010`` and the others ``MXL009``, whatever their names.
+
+    :param source_path: the project's only entry in ``paths``.
+    :param test_path: the project's only entry in ``test-paths``.
+    :param tests: files under ``test-paths``, relative to the project.
+    :param sources: files outside ``test-paths``, relative to the project.
+    :param tmp_path: holds the project directory and a sibling directory outside it.
+    :param monkeypatch: changes cwd to the project.
+    :param capfd: captures tool output.
+    """
+    project = tmp_path / "project"
+    pyproject = f"[tool.max-lint]\npaths = [{json.dumps(source_path)}]\ntest-paths = [{json.dumps(test_path)}]\n"
+    write_files(project, {"pyproject.toml": pyproject, **dict.fromkeys([*tests, *sources], CLASSIFIED)})
+
+    exit_code, output = lint(project, monkeypatch, capfd, "--check")
+    expected = [f"{path}:3:1: MXL010" for path in tests] + [f"{path}:5:1: MXL009" for path in sources]
+
+    assert exit_code == 1
+    assert flake8_codes(output) == sorted(expected)
+
+
+def test_flake8_without_max_lint_treats_no_file_as_a_test(tmp_path: Path) -> None:
+    """
+    flake8 run directly reports ``MXL009`` and no ``MXL010`` for a file named and placed like a test.
+
+    :param tmp_path: project directory for fixture files.
+    """
+    write_files(tmp_path, {"tests/test_mod.py": CLASSIFIED})
+
+    result = _run_flake8(tmp_path, "--select=MXL", "tests")
+
+    assert result.returncode == 1
+    assert flake8_codes(result.stdout) == ["tests/test_mod.py:5:1: MXL009"]
+
+    option_manager = mock.Mock()
+    MaxLintPlugin.add_options(option_manager)
+    MaxLintPlugin.parse_options(argparse.Namespace(max_lint_test_paths=option_manager.add_option.call_args.kwargs["default"]))
+
+    assert MaxLintPlugin.test_paths == ()
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["not json", '"/"', "[1]", "1" * 4301, "[" * 100000 + "]" * 100000],
+    ids=["not-json", "not-a-list", "non-string-entry", "over-int-digit-limit", "over-recursion-limit"],
+)
+def test_flake8_rejects_a_test_paths_value_that_is_not_a_list_of_strings(value: str, tmp_path: Path) -> None:
+    """
+    A ``max-lint-test-paths`` value other than a JSON list of strings ends flake8 with one line and no findings.
+
+    :param value: the option's value in the project's flake8 config.
+    :param tmp_path: project directory for fixture files.
+    """
+    write_files(tmp_path, {".flake8": f"[flake8]\nmax-lint-test-paths = {value}\n", "a.py": CLASSIFIED})
+
+    result = _run_flake8(tmp_path, "--select=MXL", ".")
+    output = result.stdout + result.stderr
+
+    assert result.returncode != 0
+    assert output == "flake8: the max-lint-test-paths option must be a JSON list of strings.\n"
+
+    with pytest.raises(SystemExit, match="max-lint-test-paths"):
+        MaxLintPlugin.parse_options(argparse.Namespace(max_lint_test_paths=value))
