@@ -205,7 +205,7 @@ The `[tool.max-lint]` table takes these keys and no others:
 | `coverage-source` | list of strings | no | Packages or directories to measure, as pytest-cov's `--cov` takes them; the test step needs at least one. |
 | `coverage-omit` | list of strings | no | Glob patterns of files to leave out of the measurement; one not starting with `*` is relative to `pyproject.toml`. |
 | `exclude` | list of strings | no | Extra flake8-style exclude patterns such as `"src/inventory/generated"`, removed from every lint step alike. |
-| `per-file-ignores` | table of glob to list of strings | no | Flake8 codes to ignore per file, such as `{ "src/inventory/legacy.py" = ["D103"] }`; a glob matches a file's path relative to `pyproject.toml`, and `*` also matches `/`. |
+| `per-file-ignores` | table of glob to list of strings | no | Flake8 codes to ignore per file, such as `{ "src/inventory/legacy.py" = ["D103"] }`; a glob matches a file's path relative to `pyproject.toml`, and `*` also matches `/`, so `{ "*" = ["D103"] }` ignores `D103` in every file. |
 
 Every path in `paths` and `test-paths` must exist; paths are relative to `pyproject.toml` and may point outside its directory. Ignored codes add up per file: `D104` and `F401` for every `__init__.py`, and the codes of every `per-file-ignores` entry whose glob matches.
 

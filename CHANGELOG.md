@@ -2,6 +2,10 @@
 
 What each release of max-lint changes in a project that uses it. The bundled style and the tool versions are part of the package, so a release can add findings or rewrite files; read every section between the version a project has and the one it moves to.
 
+## 0.11.2 (2026-11-27)
+
+- Nothing changes in what max-lint checks, rewrites or reports.
+
 ## 0.11.1 (2026-11-27)
 
 - Nothing changes in what max-lint checks, rewrites or reports.
